@@ -22,12 +22,6 @@ function getToday() {
 
 export async function GET(req) {
   const resend = new Resend(process.env.RESEND_API_KEY)
-
-  const authHeader = req.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response('Unauthorized', { status: 401 })
-  }
-
   const weekStart = getWeekStart()
   const today = getToday()
 
