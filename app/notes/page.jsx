@@ -54,84 +54,62 @@ export default function NotesPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-8">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/" className="text-gray-400 hover:text-white">← Back</Link>
+    <main className="min-h-screen bg-gray-950 text-white">
+      <div className="max-w-lg mx-auto px-4 py-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Link href="/" className="text-gray-400 text-2xl">←</Link>
           <h1 className="text-2xl font-bold">Notes</h1>
         </div>
 
         <div className="mb-6">
           <textarea
-            className="w-full bg-gray-800 rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+            className="w-full bg-gray-800 rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 resize-none text-base"
             rows={3}
             placeholder="Write a note..."
             value={newNote}
             onChange={e => setNewNote(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && e.ctrlKey) addNote()
-            }}
           />
-          <div className="flex justify-between items-center mt-2">
-            <span className="text-xs text-gray-500">Ctrl+Enter to save</span>
-            <button
-              onClick={addNote}
-              className="bg-blue-600 hover:bg-blue-500 rounded-lg px-4 py-2 text-sm font-medium transition"
-            >
-              Save Note
-            </button>
-          </div>
+          <button
+            onClick={addNote}
+            className="w-full mt-2 bg-blue-600 active:bg-blue-700 rounded-2xl py-3 font-semibold text-base transition"
+          >Save Note</button>
         </div>
 
         {loading ? (
           <p className="text-gray-400">Loading...</p>
         ) : (
           <div className="space-y-3">
-            {notes.length === 0 && <p className="text-gray-500">No notes yet.</p>}
+            {notes.length === 0 && <p className="text-gray-500 text-center py-8">No notes yet.</p>}
             {notes.map(note => (
-              <div key={note.id} className="bg-gray-800 rounded-xl p-4 group">
+              <div key={note.id} className="bg-gray-800 rounded-2xl p-4">
                 {editingId === note.id ? (
                   <div>
                     <textarea
-                      className="w-full bg-gray-700 rounded-lg px-3 py-2 outline-none resize-none"
+                      className="w-full bg-gray-700 rounded-xl px-3 py-2 outline-none resize-none text-base"
                       rows={3}
                       value={editContent}
                       onChange={e => setEditContent(e.target.value)}
                       autoFocus
                     />
                     <div className="flex gap-2 mt-2">
-                      <button
-                        onClick={() => saveEdit(note.id)}
-                        className="bg-blue-600 hover:bg-blue-500 rounded-lg px-3 py-1 text-sm transition"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => setEditingId(null)}
-                        className="bg-gray-700 hover:bg-gray-600 rounded-lg px-3 py-1 text-sm transition"
-                      >
-                        Cancel
-                      </button>
+                      <button onClick={() => saveEdit(note.id)} className="flex-1 bg-blue-600 rounded-xl py-2 text-sm font-medium">Save</button>
+                      <button onClick={() => setEditingId(null)} className="flex-1 bg-gray-700 rounded-xl py-2 text-sm">Cancel</button>
                     </div>
                   </div>
                 ) : (
                   <div>
-                    <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                    <p className="text-base whitespace-pre-wrap leading-relaxed">{note.content}</p>
                     <div className="flex items-center justify-between mt-3">
                       <span className="text-xs text-gray-500">{formatDate(note.created_at)}</span>
-                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                      <div className="flex gap-3">
                         <button
                           onClick={() => { setEditingId(note.id); setEditContent(note.content) }}
-                          className="text-gray-400 hover:text-white text-xs transition"
-                        >
-                          Edit
-                        </button>
+                          className="text-gray-400 text-sm py-1 px-2"
+                        >Edit</button>
                         <button
                           onClick={() => deleteNote(note.id)}
-                          className="text-gray-400 hover:text-red-400 text-xs transition"
-                        >
-                          Delete
-                        </button>
+                          className="text-red-400 text-sm py-1 px-2"
+                        >Delete</button>
                       </div>
                     </div>
                   </div>
