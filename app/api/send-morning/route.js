@@ -78,7 +78,7 @@ export async function GET(req) {
 
   await resend.emails.send({
     from: 'Sarkis Dashboard <onboarding@resend.dev>',
-    to: 'brodude028@gmail.com',
+    to: 'mothertherese577@gmail.com',
     subject: `☀️ ${today}'s Tasks — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
     html
   })
