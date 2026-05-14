@@ -85,4 +85,9 @@ export async function GET(req) {
   await resend.emails.send({
     from: 'Sarkis Dashboard <onboarding@resend.dev>',
     to: 'brodude028@gmail.com',
-    subject: `☀️
+    subject: `☀️ ${today}'s Tasks — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+    html
+  })
+
+  return Response.json({ ok: true })
+}

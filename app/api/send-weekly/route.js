@@ -1,90 +1,91 @@
 import { Resend } from 'resend'
 import { createClient } from '@supabase/supabase-js'
 
-const resend = new Resend(process.env.re_VkNr6mqj_RX2uhoDAs5et5wnh8oAitEqH)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
-function getWeekStart(offset = 0) {
+function getWeekStart() {
   const now = new Date()
   const day = now.getDay()
   const diff = day === 0 ? -6 : 1 - day
   const monday = new Date(now)
-  monday.setDate(now.getDate() + diff + offset * 7)
+  monday.setDate(now.getDate() + diff)
   return monday.toISOString().split('T')[0]
 }
 
+function getToday() {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  return days[new Date().getDay()]
+}
+
 export async function GET(req) {
+  const resend = new Resend(process.env.RESEND_API_KEY)
+
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  const thisWeek = getWeekStart()
-  const nextWeek = getWeekStart(1)
+  const weekStart = getWeekStart()
+  const today = getToday()
 
-  const { data: thisWeekTodos } = await supabase
-    .from('todos').select('*').eq('week_start', thisWeek)
-
-  const { data: nextWeekSarkis } = await supabase
-    .from('sarkis_tasks')
+  const { data: todos } = await supabase
+    .from('todos')
     .select('*')
-    .eq('status', "Haven't Started")
-    .not('planned_date', 'is', null)
-    .gte('planned_date', nextWeek)
-    .lt('planned_date', getWeekStart(2))
+    .eq('week_start', weekStart)
+    .order('sort_order')
 
-  const completed = thisWeekTodos?.filter(t => t.is_complete) || []
-  const incomplete = thisWeekTodos?.filter(t => !t.is_complete) || []
+  const todayTasks = todos?.filter(t => t.day_of_week === today) || []
+  const rolledOver = todayTasks.filter(t => t.title.includes('(from'))
+  const scheduled = todayTasks.filter(t => !t.title.includes('(from'))
+
+  const { data: overdue } = await supabase
+    .from('todos')
+    .select('*')
+    .lt('week_start', weekStart)
+    .eq('is_complete', false)
 
   const taskRow = (t) => `
     <tr>
-      <td style="padding:6px 12px; color:#aaa; font-size:13px; border-bottom:1px solid #1a1a1a;">
-        ${t.day_of_week ? '<span style="color:#555; min-width:80px; display:inline-block;">' + t.day_of_week.slice(0,3) + '</span>' : ''}
-        ${t.title}
-        ${t.category ? '<span style="color:#666;"> [' + t.category + ']</span>' : ''}
+      <td style="padding:6px 12px; border-bottom:1px solid #2a2a2a;">
+        ${t.is_complete ? '<s style="color:#666">' + t.title + '</s>' : t.title}
+        ${t.category ? '<span style="color:#888; font-size:12px;"> [' + t.category + ']</span>' : ''}
+        ${t.start_time ? '<span style="color:#60a5fa; font-size:12px;"> @' + t.start_time + (t.end_time ? '-' + t.end_time : '') + '</span>' : ''}
       </td>
     </tr>`
 
   const html = `
     <div style="font-family:sans-serif; background:#0a0a0a; color:#e5e5e5; padding:24px; max-width:600px; margin:0 auto; border-radius:12px;">
-      <h1 style="color:#a78bfa; margin-bottom:4px;">Weekly Recap 📊</h1>
-      <p style="color:#666; margin-top:0;">Week of ${thisWeek}</p>
+      <h1 style="color:#60a5fa; margin-bottom:4px;">Good morning 🌅</h1>
+      <p style="color:#666; margin-top:0;">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
 
-      <h2 style="color:#4ade80; font-size:16px; margin-top:24px;">✅ Completed This Week (${completed.length})</h2>
-      ${completed.length > 0 ? `
+      <h2 style="color:#e5e5e5; font-size:16px; margin-top:24px;">📋 Today's Tasks (${todayTasks.length})</h2>
+      ${scheduled.length > 0 ? `
         <table style="width:100%; border-collapse:collapse; background:#111; border-radius:8px; overflow:hidden;">
-          ${completed.map(taskRow).join('')}
-        </table>` : '<p style="color:#666;">Nothing completed this week.</p>'}
+          ${scheduled.map(taskRow).join('')}
+        </table>` : '<p style="color:#666;">No tasks scheduled for today.</p>'}
 
-      <h2 style="color:#f87171; font-size:16px; margin-top:24px;">📌 Left Incomplete (${incomplete.length})</h2>
-      ${incomplete.length > 0 ? `
+      ${rolledOver.length > 0 ? `
+        <h2 style="color:#fbbf24; font-size:16px; margin-top:24px;">🔄 Rolled Over (${rolledOver.length})</h2>
         <table style="width:100%; border-collapse:collapse; background:#111; border-radius:8px; overflow:hidden;">
-          ${incomplete.map(taskRow).join('')}
-        </table>` : '<p style="color:#666;">Everything done! 🎉</p>'}
-
-      ${nextWeekSarkis && nextWeekSarkis.length > 0 ? `
-        <h2 style="color:#60a5fa; font-size:16px; margin-top:24px;">🔮 Coming Next Week from Sarkis (${nextWeekSarkis.length})</h2>
-        <table style="width:100%; border-collapse:collapse; background:#111; border-radius:8px; overflow:hidden;">
-          ${nextWeekSarkis.map(t => `
-            <tr>
-              <td style="padding:6px 12px; color:#aaa; font-size:13px; border-bottom:1px solid #1a1a1a;">
-                <span style="color:#555; min-width:80px; display:inline-block;">${t.category || ''}</span>
-                ${t.title}
-                <span style="color:#666;"> · ${t.planned_date}</span>
-              </td>
-            </tr>`).join('')}
+          ${rolledOver.map(taskRow).join('')}
         </table>` : ''}
 
-      <p style="color:#444; font-size:12px; margin-top:32px; text-align:center;">Sarkis Dashboard · <a href="https://sarkis-dashboard.vercel.app" style="color:#a78bfa;">Open Dashboard</a></p>
+      ${overdue && overdue.length > 0 ? `
+        <h2 style="color:#f87171; font-size:16px; margin-top:24px;">⚠ Overdue from Previous Weeks (${overdue.length})</h2>
+        <table style="width:100%; border-collapse:collapse; background:#111; border-radius:8px; overflow:hidden;">
+          ${overdue.map(taskRow).join('')}
+        </table>` : ''}
+
+      <p style="color:#444; font-size:12px; margin-top:32px; text-align:center;">Sarkis Dashboard · <a href="https://sarkis-dashboard.vercel.app" style="color:#60a5fa;">Open Dashboard</a></p>
     </div>`
 
   await resend.emails.send({
     from: 'Sarkis Dashboard <onboarding@resend.dev>',
     to: 'brodude028@gmail.com',
-    subject: `📊 Weekly Recap — Week of ${thisWeek}`,
+    subject: `☀️ ${today}'s Tasks — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
     html
   })
 
