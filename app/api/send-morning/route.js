@@ -1,7 +1,6 @@
 import { Resend } from 'resend'
 import { createClient } from '@supabase/supabase-js'
 
-const resend = new Resend(process.env.re_VkNr6mqj_RX2uhoDAs5et5wnh8oAitEqH)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -22,6 +21,8 @@ function getToday() {
 }
 
 export async function GET(req) {
+  const resend = new Resend(process.env.RESEND_API_KEY)
+
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return new Response('Unauthorized', { status: 401 })
@@ -29,7 +30,6 @@ export async function GET(req) {
 
   const weekStart = getWeekStart()
   const today = getToday()
-  const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
   const { data: todos } = await supabase
     .from('todos')
@@ -85,9 +85,4 @@ export async function GET(req) {
   await resend.emails.send({
     from: 'Sarkis Dashboard <onboarding@resend.dev>',
     to: 'brodude028@gmail.com',
-    subject: `☀️ ${today}'s Tasks — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
-    html
-  })
-
-  return Response.json({ ok: true })
-}
+    subject: `☀️
