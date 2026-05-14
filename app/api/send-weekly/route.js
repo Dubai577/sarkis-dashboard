@@ -23,10 +23,10 @@ function getToday() {
 export async function GET(req) {
   const resend = new Resend(process.env.RESEND_API_KEY)
 
-  const authHeader = req.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response('Unauthorized', { status: 401 })
-  }
+  console.log('API KEY:', process.env.RESEND_API_KEY ? 'found' : 'missing')
+if (!process.env.RESEND_API_KEY) {
+  return Response.json({ error: 'missing api key' }, { status: 500 })
+}
 
   const weekStart = getWeekStart()
   const today = getToday()
