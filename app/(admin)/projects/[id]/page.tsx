@@ -116,6 +116,13 @@ export default async function ProjectDetail({ params }: { params: Promise<{ id: 
                 </span>
               )}
               <Link
+                href={`/projects/${id}/dashboard`}
+                className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-200
+                           px-3 py-1.5 rounded-full hover:bg-indigo-100 transition-colors font-medium"
+              >
+                📊 Dashboard
+              </Link>
+              <Link
                 href={`/projects/${id}/edit`}
                 className="text-xs text-gray-500 bg-white border border-gray-200
                            px-3 py-1.5 rounded-full hover:bg-gray-50 transition-colors"

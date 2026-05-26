@@ -23,6 +23,74 @@ function isOverdue(d: string | null, status: string) {
   return new Date(d + 'T00:00:00') < new Date()
 }
 
+// ── Update item (edit / delete) ──────────────────────────────────
+
+function UpdateItem({ update, onDelete }: { update: any; onDelete: (id: string) => void }) {
+  const [editing,  setEditing]  = useState(false)
+  const [text,     setText]     = useState(update.content)
+  const [content,  setContent]  = useState(update.content)
+  const [saving,   setSaving]   = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleSave() {
+    if (!text.trim()) return
+    setSaving(true)
+    const res = await fetch(`/api/portal/updates/${update.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: text.trim() }),
+    })
+    if (res.ok) { setContent(text.trim()); setEditing(false) }
+    setSaving(false)
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    const res = await fetch(`/api/portal/updates/${update.id}`, { method: 'DELETE' })
+    if (res.ok) onDelete(update.id)
+    setDeleting(false)
+  }
+
+  if (editing) {
+    return (
+      <div className="text-xs bg-gray-50 rounded-lg px-3 py-2 border-l-2 border-indigo-300">
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          rows={2}
+          className="w-full bg-transparent focus:outline-none resize-none text-gray-700 leading-relaxed"
+        />
+        <div className="flex gap-3 mt-1.5">
+          <button onClick={handleSave} disabled={saving}
+                  className="text-xs text-indigo-600 font-medium disabled:opacity-50">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button onClick={() => { setEditing(false); setText(content) }}
+                  className="text-xs text-gray-400">Cancel</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2
+                    border-l-2 border-gray-200 leading-relaxed group">
+      {content}
+      <div className="flex items-center justify-between mt-1.5">
+        <span className="text-gray-400">{fmt(update.created_at)}</span>
+        <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={() => setEditing(true)}
+                  className="text-gray-400 hover:text-indigo-600">Edit</button>
+          <button onClick={handleDelete} disabled={deleting}
+                  className="text-gray-400 hover:text-red-500">
+            {deleting ? '…' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Resource item ────────────────────────────────────────────────
 
 function ResourceItem({ r }: { r: any }) {
@@ -330,12 +398,11 @@ function SubtaskRow({ subtask }: { subtask: any }) {
         {updates.length > 0 && (
           <div className="mt-3 pl-8 space-y-1.5">
             {updates.map((u: any) => (
-              <div key={u.id}
-                   className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2
-                              border-l-2 border-gray-200 leading-relaxed">
-                {u.content}
-                <span className="block text-gray-400 mt-2">{fmt(u.created_at)}</span>
-              </div>
+              <UpdateItem
+                key={u.id}
+                update={u}
+                onDelete={id => setUpdates((prev: any[]) => prev.filter(x => x.id !== id))}
+              />
             ))}
           </div>
         )}
