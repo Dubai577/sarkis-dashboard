@@ -12,11 +12,11 @@ import {
 
 // ── Types ────────────────────────────────────────────────────────
 
-interface Contributor { id: string; name: string; email: string | null; role_name: string | null }
+interface Contributor { id: string; name: string; email: string | null; role_name?: string | null }
 interface SubtaskAssignment {
   id: string; status: string; completed_at: string | null
   contributor_id: string
-  contributors: { id: string; name: string; role_name: string | null } | null
+  contributors: { id: string; name: string; role_name?: string | null } | null
 }
 interface Subtask {
   id: string; title: string; description: string | null; due_date: string | null
