@@ -46,25 +46,43 @@ export default async function PortalDashboardPage() {
     .eq('contributor_id', contributor.id)
     .order('created_at')
 
-  // Fetch teammates (other contributors assigned to the same subtasks)
-  const subtaskIds = (subtaskAssignments ?? [])
-    .map(sa => (sa.subtasks as any)?.id)
-    .filter(Boolean)
+  // Fetch teammates at task level (all contributors on any subtask within the same task)
+  const taskIds = [...new Set(
+    (subtaskAssignments ?? [])
+      .map(sa => (sa.subtasks as any)?.tasks?.id)
+      .filter(Boolean)
+  )]
 
-  let teammatesBySubtask: Record<string, any[]> = {}
-  if (subtaskIds.length > 0) {
-    const { data: otherAssignments } = await db
-      .from('subtask_assignments')
-      .select('subtask_id, contributors(name, email, phone, role_name)')
-      .in('subtask_id', subtaskIds)
-      .neq('contributor_id', contributor.id)
+  let teammatesByTask: Record<string, any[]> = {}
+  if (taskIds.length > 0) {
+    const { data: allTaskSubtasks } = await db
+      .from('subtasks')
+      .select('id, task_id')
+      .in('task_id', taskIds)
 
-    for (const oa of otherAssignments ?? []) {
-      const c = (oa as any).contributors
-      if (!c) continue
-      const sid = (oa as any).subtask_id
-      if (!teammatesBySubtask[sid]) teammatesBySubtask[sid] = []
-      teammatesBySubtask[sid].push(c)
+    const allSubtaskIds = (allTaskSubtasks ?? []).map((s: any) => s.id)
+    const subtaskToTask: Record<string, string> = {}
+    for (const s of allTaskSubtasks ?? []) subtaskToTask[(s as any).id] = (s as any).task_id
+
+    if (allSubtaskIds.length > 0) {
+      const { data: otherAssignments } = await db
+        .from('subtask_assignments')
+        .select('subtask_id, contributors(name, email, phone, role_name)')
+        .in('subtask_id', allSubtaskIds)
+        .neq('contributor_id', contributor.id)
+
+      const seenByTask: Record<string, Set<string>> = {}
+      for (const oa of otherAssignments ?? []) {
+        const c = (oa as any).contributors
+        if (!c) continue
+        const tid = subtaskToTask[(oa as any).subtask_id]
+        if (!tid) continue
+        if (!teammatesByTask[tid]) { teammatesByTask[tid] = []; seenByTask[tid] = new Set() }
+        if (!seenByTask[tid].has(c.name)) {
+          seenByTask[tid].add(c.name)
+          teammatesByTask[tid].push(c)
+        }
+      }
     }
   }
 
@@ -146,7 +164,7 @@ export default async function PortalDashboardPage() {
       subtask_due:     subtask.due_date,
       updates:         sa.subtask_updates ?? [],
       resources:       task.task_resources ?? [],
-      teammates:       teammatesBySubtask[subtask.id] ?? [],
+      teammates:       teammatesByTask[task.id] ?? [],
     })
   }
 
