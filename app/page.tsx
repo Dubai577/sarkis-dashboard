@@ -33,6 +33,12 @@ export default function Home() {
             <div className="font-semibold text-lg">Notes</div>
             <div className="text-sm text-gray-400 mt-1">Quick notes</div>
           </Link>
+
+          <Link href="/projects" className="bg-gray-800 active:bg-gray-700 rounded-2xl p-5 transition">
+            <div className="text-3xl mb-3">🗂️</div>
+            <div className="font-semibold text-lg">Projects</div>
+            <div className="text-sm text-gray-400 mt-1">Service portal</div>
+          </Link>
         </div>
       </div>
     </main>
