@@ -473,6 +473,30 @@ export default function ProjectAdminPortal({
   const [memberList, setMemberList] = useState(members)
   const [addingTask, setAddingTask] = useState(false)
   const [addingNote, setAddingNote] = useState(false)
+  const [addingMember,    setAddingMember]    = useState(false)
+  const [selectedMember,  setSelectedMember]  = useState('')
+  const [memberRole,      setMemberRole]      = useState<'contributor'|'admin'>('contributor')
+  const [addingMemberBusy, setAddingMemberBusy] = useState(false)
+
+  const assignedIds  = memberList.map((m: any) => m.contributor_id)
+  const unassigned   = allContributors.filter((c: any) => !assignedIds.includes(c.id))
+
+  async function handleAddMember() {
+    if (!selectedMember) return
+    setAddingMemberBusy(true)
+    const res = await fetch('/api/portal/admin/members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: project.id, contributorId: selectedMember, role: memberRole }),
+    })
+    if (res.ok) {
+      setSelectedMember('')
+      setMemberRole('contributor')
+      setAddingMember(false)
+      router.refresh()
+    }
+    setAddingMemberBusy(false)
+  }
 
   return (
     <div className="space-y-5">
@@ -555,10 +579,62 @@ export default function ProjectAdminPortal({
 
           {/* Team */}
           <div className="bg-white border border-gray-200 rounded-2xl p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-1">
-              Team ({memberList.length})
-            </h3>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-sm font-semibold text-gray-700">
+                Team ({memberList.length})
+              </h3>
+              {unassigned.length > 0 && (
+                <button
+                  onClick={() => setAddingMember(v => !v)}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                >
+                  {addingMember ? 'Cancel' : '+ Add member'}
+                </button>
+              )}
+            </div>
             <p className="text-xs text-gray-400 mb-3">Hover a member to edit or remove</p>
+
+            {addingMember && (
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 mb-3 space-y-2">
+                <select
+                  value={selectedMember}
+                  onChange={e => setSelectedMember(e.target.value)}
+                  className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2
+                             bg-white focus:outline-none focus:border-indigo-400"
+                >
+                  <option value="">Select contributor…</option>
+                  {unassigned.map((c: any) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}{c.email ? ` (${c.email})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  {(['contributor', 'admin'] as const).map(r => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setMemberRole(r)}
+                      className={`flex-1 text-xs py-1.5 rounded-lg font-medium transition-colors
+                                 ${memberRole === r
+                                   ? 'bg-indigo-600 text-white'
+                                   : 'bg-white border border-gray-200 text-gray-600'}`}
+                    >
+                      {r === 'admin' ? '⭐ Admin' : 'Contributor'}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={handleAddMember}
+                  disabled={!selectedMember || addingMemberBusy}
+                  className="w-full bg-indigo-600 text-white py-2 rounded-lg text-xs
+                             font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  {addingMemberBusy ? 'Adding…' : 'Add to project'}
+                </button>
+              </div>
+            )}
+
             {memberList.length > 0 ? memberList.map((m: any) => (
               <TeamMemberCard
                 key={m.contributor_id}

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { addProjectMember, updateMemberRole, removeProjectMember } from '@/app/actions/members'
+import { addProjectMember, updateMemberRole, removeProjectMember, createAndAddContributor } from '@/app/actions/members'
 import { updateContributor } from '@/app/actions/contributors'
 
 const FREQ_LABELS: Record<string, string> = {
@@ -42,6 +42,7 @@ export default function ProjectMembers({
 }) {
   const router      = useRouter()
   const [adding, setAdding]           = useState(false)
+  const [addTab, setAddTab]           = useState<'existing'|'new'>('existing')
   const [selectedId, setSelectedId]   = useState('')
   const [selectedRole, setSelectedRole] = useState<'contributor'|'admin'>('contributor')
   const [loading, setLoading]         = useState(false)
@@ -78,55 +79,128 @@ export default function ProjectMembers({
           Team
           <span className="ml-1.5 text-gray-400 font-normal">({members.length})</span>
         </h3>
-        {unassigned.length > 0 && (
-          <button
-            onClick={() => setAdding(v => !v)}
-            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-          >
-            {adding ? 'Cancel' : '+ Add member'}
-          </button>
-        )}
+        <button
+          onClick={() => setAdding(v => !v)}
+          className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+        >
+          {adding ? 'Cancel' : '+ Add member'}
+        </button>
       </div>
 
       {/* Add member form */}
       {adding && (
         <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 mb-3 space-y-2">
-          <select
-            value={selectedId}
-            onChange={e => setSelectedId(e.target.value)}
-            className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2
-                       bg-white focus:outline-none focus:border-indigo-400"
-          >
-            <option value="">Select contributor…</option>
-            {unassigned.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-
-          <div className="flex gap-2">
-            {(['contributor', 'admin'] as const).map(r => (
+          {/* Tabs */}
+          <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
+            {(['existing', 'new'] as const).map(t => (
               <button
-                key={r}
+                key={t}
                 type="button"
-                onClick={() => setSelectedRole(r)}
-                className={`flex-1 text-xs py-1.5 rounded-lg font-medium transition-colors
-                           ${selectedRole === r
-                             ? 'bg-indigo-600 text-white'
-                             : 'bg-white border border-gray-200 text-gray-600'}`}
+                onClick={() => setAddTab(t)}
+                className={`flex-1 text-xs py-1.5 rounded-md font-medium transition-colors
+                           ${addTab === t ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                {r === 'admin' ? '⭐ Project admin' : 'Contributor'}
+                {t === 'existing' ? 'Add existing' : '+ New contributor'}
               </button>
             ))}
           </div>
 
-          <button
-            onClick={handleAdd}
-            disabled={!selectedId || loading}
-            className="w-full bg-indigo-600 text-white py-2 rounded-lg text-xs
-                       font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-          >
-            {loading ? 'Adding…' : 'Add to project'}
-          </button>
+          {addTab === 'existing' ? (
+            <>
+              <select
+                value={selectedId}
+                onChange={e => setSelectedId(e.target.value)}
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2
+                           bg-white focus:outline-none focus:border-indigo-400"
+              >
+                <option value="">Select contributor…</option>
+                {unassigned.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}{c.email ? ` — ${c.email}` : ''}</option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                {(['contributor', 'admin'] as const).map(r => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setSelectedRole(r)}
+                    className={`flex-1 text-xs py-1.5 rounded-lg font-medium transition-colors
+                               ${selectedRole === r
+                                 ? 'bg-indigo-600 text-white'
+                                 : 'bg-white border border-gray-200 text-gray-600'}`}
+                  >
+                    {r === 'admin' ? '⭐ Project admin' : 'Contributor'}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={handleAdd}
+                disabled={!selectedId || loading}
+                className="w-full bg-indigo-600 text-white py-2 rounded-lg text-xs
+                           font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                {loading ? 'Adding…' : 'Add to project'}
+              </button>
+            </>
+          ) : (
+            <form
+              action={async (fd) => {
+                await createAndAddContributor(projectId, fd)
+                setAdding(false)
+                router.refresh()
+              }}
+              className="space-y-2"
+            >
+              <input
+                name="name"
+                required
+                placeholder="Full name *"
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2
+                           bg-white focus:outline-none focus:border-indigo-400"
+              />
+              <input
+                name="role_name"
+                placeholder="Role / title (e.g. Developer)"
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2
+                           bg-white focus:outline-none focus:border-indigo-400"
+              />
+              <input
+                name="email"
+                type="email"
+                placeholder="Email"
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2
+                           bg-white focus:outline-none focus:border-indigo-400"
+              />
+              <input
+                name="phone"
+                placeholder="Phone"
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2
+                           bg-white focus:outline-none focus:border-indigo-400"
+              />
+              <div className="flex gap-2">
+                {(['contributor', 'admin'] as const).map(r => (
+                  <label
+                    key={r}
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs
+                               border border-gray-200 rounded-lg py-1.5 cursor-pointer
+                               has-[:checked]:bg-indigo-600 has-[:checked]:text-white
+                               has-[:checked]:border-indigo-600 text-gray-600 bg-white transition-colors"
+                  >
+                    <input type="radio" name="role" value={r} defaultChecked={r === 'contributor'} className="sr-only" />
+                    {r === 'admin' ? '⭐ Project admin' : 'Contributor'}
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 italic">A PIN will be auto-generated for login.</p>
+              <button
+                type="submit"
+                className="w-full bg-indigo-600 text-white py-2 rounded-lg text-xs
+                           font-semibold hover:bg-indigo-700 transition-colors"
+              >
+                Create &amp; add to project
+              </button>
+            </form>
+          )}
         </div>
       )}
 
