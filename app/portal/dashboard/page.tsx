@@ -67,21 +67,26 @@ export default async function PortalDashboardPage() {
     if (allSubtaskIds.length > 0) {
       const { data: otherAssignments } = await db
         .from('subtask_assignments')
-        .select('subtask_id, contributors(name, email, phone, role_name)')
+        .select('subtask_id, contributors(name, email, phone, role_name), subtasks(title)')
         .in('subtask_id', allSubtaskIds)
         .neq('contributor_id', contributor.id)
 
-      const seenByTask: Record<string, Set<string>> = {}
+      // Group by task → contributor, accumulate which sections they're assigned to
+      const taskContribMap: Record<string, Record<string, any>> = {}
       for (const oa of otherAssignments ?? []) {
         const c = (oa as any).contributors
         if (!c) continue
         const tid = subtaskToTask[(oa as any).subtask_id]
         if (!tid) continue
-        if (!teammatesByTask[tid]) { teammatesByTask[tid] = []; seenByTask[tid] = new Set() }
-        if (!seenByTask[tid].has(c.name)) {
-          seenByTask[tid].add(c.name)
-          teammatesByTask[tid].push(c)
+        const sectionTitle = (oa as any).subtasks?.title
+        if (!taskContribMap[tid]) taskContribMap[tid] = {}
+        if (!taskContribMap[tid][c.name]) {
+          taskContribMap[tid][c.name] = { ...c, assignedSections: [] }
         }
+        if (sectionTitle) taskContribMap[tid][c.name].assignedSections.push(sectionTitle)
+      }
+      for (const tid of Object.keys(taskContribMap)) {
+        teammatesByTask[tid] = Object.values(taskContribMap[tid])
       }
     }
   }
