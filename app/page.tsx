@@ -5,8 +5,8 @@ export default function Home() {
     <main className="min-h-screen bg-gray-950 text-white">
       <div className="max-w-lg mx-auto px-4 py-10">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-1">Sarkis</h1>
-          <p className="text-gray-400 text-lg">Personal command center</p>
+          <h1 className="text-4xl font-bold mb-1">merc</h1>
+          <p className="text-gray-400 text-lg">Everything in one place</p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
