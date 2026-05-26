@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-function getToken() {
-  return cookies().get('contributor_token')?.value
+async function getToken() {
+  const cookieStore = await cookies()
+  return cookieStore.get('contributor_token')?.value
 }
 
 export async function PATCH(req: NextRequest) {
-  const token = getToken()
+  const token = await getToken()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { email, notif_frequency } = await req.json()
