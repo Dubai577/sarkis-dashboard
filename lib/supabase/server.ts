@@ -8,8 +8,8 @@ import { cookies } from 'next/headers'
  * For contributor API calls, also pass the x-contributor-token header
  * so that the get_contributor_id() RLS helper can resolve the session.
  */
-export function createServerSupabaseClient() {
-  const cookieStore = cookies()
+export async function createServerSupabaseClient() {
+  const cookieStore = await cookies()
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
