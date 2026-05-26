@@ -1,6 +1,6 @@
 'use client'
 
-import AdminProjectLink from './AdminProjectLink'
+import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { NotifFrequency } from '@/lib/types/portal'
@@ -448,41 +448,76 @@ function SubtaskRow({ subtask, projectColor }: { subtask: any; projectColor?: st
 function ProjectAdminView({ project, tasks }: { project: any; tasks: any[] }) {
   const [open, setOpen] = useState(true)
   const projectTasks = tasks.filter(t => t.project_id === project.project_id)
-  if (projectTasks.length === 0) return null
+
+  const allSubs  = projectTasks.flatMap(t => t.subtasks ?? [])
+  const totalSubs = allSubs.length
+  const doneSubs  = allSubs.filter(s =>
+    (s.subtask_assignments ?? []).length > 0 &&
+    (s.subtask_assignments ?? []).every((a: any) => a.status === 'completed')
+  ).length
+  const pct = totalSubs > 0 ? Math.round(doneSubs / totalSubs * 100) : 0
 
   return (
     <section>
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-3 mb-4 group w-full text-left"
-      >
-        <span className="w-3 h-3 rounded-full flex-shrink-0"
-              style={{ backgroundColor: project.project_color }} />
-        <span className="text-base font-bold text-gray-800 group-hover:text-indigo-700 flex-1">
-          {project.project_name}
-        </span>
-        <span className="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full font-semibold">
-          Admin
-        </span>
-        <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-90' : ''}`}
-             fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-1.5 h-10 rounded-full flex-shrink-0"
+             style={{ backgroundColor: project.project_color }} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-bold text-gray-900 truncate">{project.project_name}</h2>
+            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">
+              ⭐ Admin
+            </span>
+          </div>
+          <p className="text-xs text-gray-400 mt-0.5">{doneSubs} of {totalSubs} sections done</p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-sm font-bold" style={{ color: project.project_color }}>{pct}%</span>
+          <button
+            onClick={() => setOpen(v => !v)}
+            className="text-gray-300 hover:text-gray-500 transition-colors"
+          >
+            <svg className={`w-5 h-5 transition-transform ${open ? 'rotate-90' : ''}`}
+                 fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="h-1.5 bg-gray-100 rounded-full mb-2 overflow-hidden ml-5">
+        <div className="h-full rounded-full transition-all duration-700"
+             style={{ width: `${pct}%`, backgroundColor: project.project_color }} />
+      </div>
+
+      {/* Full admin view link */}
+      <div className="ml-5 mb-5">
+        <Link
+          href={`/portal/project/${project.project_id}`}
+          className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+        >
+          Full admin view →
+        </Link>
+      </div>
 
       {open && (
-        <div className="space-y-3">
+        <div className="ml-5 space-y-3">
+          {projectTasks.length === 0 && (
+            <p className="text-sm text-gray-400 italic">No tasks yet.</p>
+          )}
           {projectTasks.map((task: any) => (
             <div key={task.id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
               <p className="text-sm font-bold text-gray-900 mb-4">{task.title}</p>
-              {task.subtasks?.length > 0 ? (
+              {(task.subtasks ?? []).length > 0 ? (
                 <div className="space-y-2.5">
-                  {task.subtasks.map((s: any) => (
+                  {(task.subtasks ?? []).map((s: any) => (
                     <div key={s.id} className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
                       <p className="text-sm font-semibold text-gray-800">{s.title}</p>
-                      {s.subtask_assignments?.length > 0 ? (
+                      {(s.subtask_assignments ?? []).length > 0 ? (
                         <div className="mt-2.5 space-y-2">
-                          {s.subtask_assignments.map((sa: any) => (
+                          {(s.subtask_assignments ?? []).map((sa: any) => (
                             <div key={sa.id} className="flex items-center gap-2.5">
                               <Avatar name={sa.contributors?.name ?? '?'}
                                       color={project.project_color} size="sm" />
@@ -497,7 +532,7 @@ function ProjectAdminView({ project, tasks }: { project: any; tasks: any[] }) {
                                                  : 'bg-gray-100 text-gray-500'}`}>
                                 {sa.status.replace('_', ' ')}
                               </span>
-                              {sa.subtask_updates?.length > 0 && (
+                              {(sa.subtask_updates ?? []).length > 0 && (
                                 <span className="text-xs text-gray-400 italic line-clamp-1 flex-1 max-w-[160px]">
                                   "{sa.subtask_updates[sa.subtask_updates.length - 1].content}"
                                 </span>
@@ -715,7 +750,7 @@ export default function ContributorDashboard({
 
           {/* Projects I manage */}
           {adminProjects.length > 0 && (
-            <div className="space-y-4">
+            <div className="space-y-10">
               <div className="flex items-center gap-3">
                 <div className="h-px bg-gray-200 flex-1" />
                 <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
@@ -724,11 +759,10 @@ export default function ContributorDashboard({
                 <div className="h-px bg-gray-200 flex-1" />
               </div>
               {adminProjects.map(g => (
-                <AdminProjectLink
+                <ProjectAdminView
                   key={g.project_id}
-                  projectId={g.project_id}
-                  projectName={g.project_name}
-                  projectColor={g.project_color}
+                  project={g}
+                  tasks={adminProjectData}
                 />
               ))}
             </div>
