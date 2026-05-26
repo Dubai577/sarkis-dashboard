@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sarkis Dashboard",
+  title: "Merc Dashboard",
   description: "Personal command center",
 };
 
