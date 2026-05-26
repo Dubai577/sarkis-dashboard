@@ -54,7 +54,6 @@ function SubtaskRow({ subtask }: { subtask: any }) {
   const overdue = isOverdue(subtask.subtask_due, status)
 
   async function handleStatusChange(newStatus: string) {
-    if (status === 'completed') return
     setCompleting(true)
     const res = await fetch(`/api/portal/subtasks/${subtask.assignment_id}`, {
       method:  'PATCH',
@@ -91,8 +90,8 @@ function SubtaskRow({ subtask }: { subtask: any }) {
         <div className="flex items-start gap-3">
           {/* Complete button */}
           <button
-            onClick={() => handleStatusChange('completed')}
-            disabled={status === 'completed' || completing}
+            onClick={() => handleStatusChange(status === 'completed' ? 'pending' : 'completed')}
+            disabled={completing}
             className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5
                         flex items-center justify-center transition-colors
                         ${status === 'completed'
