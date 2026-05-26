@@ -84,6 +84,7 @@ export interface ProjectSummary extends Project {
   task_count:        number
   completed_count:   number
   contributor_count: number
+  admin_count:       number
   pinned_note:       string | null
 }
 

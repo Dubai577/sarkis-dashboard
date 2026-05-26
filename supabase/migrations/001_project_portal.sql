@@ -269,16 +269,29 @@ create policy "contributor_read_updates"
 -- ----------------------------------------------------------------
 
 create or replace view project_summary as
+with task_progress as (
+  select
+    t.project_id,
+    t.id                                                             as task_id,
+    count(sa.id)                                                     as total_assignments,
+    count(case when sa.status = 'completed' then 1 end)             as done_assignments
+  from tasks t
+  left join subtasks s              on s.task_id    = t.id
+  left join subtask_assignments sa  on sa.subtask_id = s.id
+  group by t.project_id, t.id
+)
 select
   p.*,
-  count(distinct t.id)                                           as task_count,
-  count(distinct case when ta.status = 'completed' then ta.id end) as completed_count,
-  count(distinct ta.contributor_id)                              as contributor_count,
-  max(pn.content) filter (where pn.is_pinned = true)            as pinned_note
+  count(distinct tp.task_id)                                                                        as task_count,
+  count(distinct case when tp.total_assignments > 0
+                       and tp.total_assignments = tp.done_assignments then tp.task_id end)          as completed_count,
+  count(distinct pm.contributor_id)                                                                 as contributor_count,
+  count(distinct case when pm.role = 'admin' then pm.contributor_id end)                           as admin_count,
+  max(pn.content) filter (where pn.is_pinned = true)                                               as pinned_note
 from projects p
-left join tasks t               on t.project_id = p.id
-left join task_assignments ta   on ta.task_id   = t.id
-left join project_notes pn      on pn.project_id = p.id
+left join project_members pm  on pm.project_id  = p.id
+left join task_progress tp    on tp.project_id   = p.id
+left join project_notes pn    on pn.project_id   = p.id
 group by p.id;
 
 -- ----------------------------------------------------------------
