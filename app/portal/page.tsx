@@ -1,10 +1,8 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 
 export default function PortalPinPage() {
-  const router  = useRouter()
   const [pin, setPin]         = useState(['', '', '', ''])
   const [error, setError]     = useState('')
   const [loading, setLoading] = useState(false)
@@ -50,7 +48,7 @@ export default function PortalPinPage() {
       })
 
       if (res.ok) {
-        router.push('/portal/dashboard')
+        window.location.href = '/portal/dashboard'
       } else {
         const data = await res.json()
         setError(data.error ?? 'Incorrect PIN. Try again.')

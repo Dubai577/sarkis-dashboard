@@ -1,5 +1,9 @@
 'use server'
 
+// TODO: run these in Supabase:
+// ALTER TABLE contributors ADD COLUMN IF NOT EXISTS role_name text;
+// ALTER TABLE subtask_assignments ADD COLUMN IF NOT EXISTS assignment_role text;
+
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'

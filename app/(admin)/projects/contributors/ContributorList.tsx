@@ -65,16 +65,6 @@ function ContributorForm({
                        focus:outline-none focus:border-indigo-400"
           />
         </div>
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
-          <input
-            name="role_name"
-            defaultValue={defaults?.role_name ?? ''}
-            placeholder="e.g. Social Media Lead"
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm
-                       focus:outline-none focus:border-indigo-400"
-          />
-        </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
           <input
@@ -93,6 +83,16 @@ function ContributorForm({
             type="tel"
             defaultValue={defaults?.phone ?? ''}
             placeholder="+1 (555) 000-0000"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm
+                       focus:outline-none focus:border-indigo-400"
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-gray-600 mb-1">Role / Title</label>
+          <input
+            name="role_name"
+            defaultValue={defaults?.role_name ?? ''}
+            placeholder="e.g. Social Media Lead, Developer"
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm
                        focus:outline-none focus:border-indigo-400"
           />
