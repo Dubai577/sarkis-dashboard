@@ -54,6 +54,19 @@ export async function createSubtask(taskId: string, projectId: string, formData:
   revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
 }
 
+export async function updateSubtask(
+  subtaskId: string, taskId: string, projectId: string, formData: FormData,
+) {
+  const db = createAdminClient()
+  const { error } = await db.from('subtasks').update({
+    title:       formData.get('title') as string,
+    description: (formData.get('description') as string) || null,
+    due_date:    (formData.get('due_date') as string) || null,
+  }).eq('id', subtaskId)
+  if (error) throw new Error(error.message)
+  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+}
+
 export async function deleteSubtask(subtaskId: string, taskId: string, projectId: string) {
   const db = createAdminClient()
   await db.from('subtasks').delete().eq('id', subtaskId)
@@ -73,6 +86,17 @@ export async function assignContributorToSubtask(
     subtask_id:     subtaskId,
     contributor_id: contributorId,
   }, { onConflict: 'subtask_id,contributor_id', ignoreDuplicates: true })
+  if (error) throw new Error(error.message)
+  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+}
+
+export async function updateSubtaskAssignmentStatus(
+  assignmentId: string, status: string, taskId: string, projectId: string,
+) {
+  const db = createAdminClient()
+  const { error } = await db.from('subtask_assignments')
+    .update({ status })
+    .eq('id', assignmentId)
   if (error) throw new Error(error.message)
   revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
 }

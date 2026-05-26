@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  createSubtask, deleteSubtask,
-  assignContributorToSubtask, removeSubtaskAssignment,
+  createSubtask, updateSubtask, deleteSubtask,
+  assignContributorToSubtask, removeSubtaskAssignment, updateSubtaskAssignmentStatus,
   addDependency, removeDependency,
   addResource, deleteResource,
   updateTask, deleteTask,
@@ -12,10 +12,11 @@ import {
 
 // ── Types ────────────────────────────────────────────────────────
 
-interface Contributor { id: string; name: string; email: string | null }
+interface Contributor { id: string; name: string; email: string | null; role_name: string | null }
 interface SubtaskAssignment {
   id: string; status: string; completed_at: string | null
-  contributor_id: string; contributors: { id: string; name: string } | null
+  contributor_id: string
+  contributors: { id: string; name: string; role_name: string | null } | null
 }
 interface Subtask {
   id: string; title: string; description: string | null; due_date: string | null
@@ -47,9 +48,12 @@ function SubtaskRow({
 }: {
   subtask: Subtask; contributors: Contributor[]; projectId: string; taskId: string
 }) {
-  const [assigning, setAssigning]   = useState(false)
+  const router = useRouter()
+  const [editing,    setEditing]    = useState(false)
+  const [assigning,  setAssigning]  = useState(false)
   const [selectedId, setSelectedId] = useState('')
-  const assigned = subtask.subtask_assignments.map(a => a.contributor_id)
+
+  const assigned   = subtask.subtask_assignments.map(a => a.contributor_id)
   const unassigned = contributors.filter(c => !assigned.includes(c.id))
 
   async function handleAssign() {
@@ -61,10 +65,68 @@ function SubtaskRow({
 
   async function handleRemove(contributorId: string) {
     await removeSubtaskAssignment(subtask.id, contributorId, taskId, projectId)
+    router.refresh()
+  }
+
+  async function handleStatusChange(assignmentId: string, status: string) {
+    await updateSubtaskAssignmentStatus(assignmentId, status, taskId, projectId)
+    router.refresh()
   }
 
   async function handleDelete() {
     await deleteSubtask(subtask.id, taskId, projectId)
+    router.refresh()
+  }
+
+  if (editing) {
+    return (
+      <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+        <form action={async (fd) => {
+          await updateSubtask(subtask.id, taskId, projectId, fd)
+          setEditing(false)
+          router.refresh()
+        }} className="space-y-3">
+          <input
+            name="title"
+            required
+            defaultValue={subtask.title}
+            placeholder="Section title *"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium
+                       focus:outline-none focus:border-indigo-400"
+          />
+          <textarea
+            name="description"
+            rows={2}
+            defaultValue={subtask.description ?? ''}
+            placeholder="Description (optional)"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm
+                       focus:outline-none focus:border-indigo-400 resize-none"
+          />
+          <div className="flex items-center gap-3">
+            <input
+              type="date"
+              name="due_date"
+              defaultValue={subtask.due_date ?? ''}
+              className="text-sm border border-gray-200 rounded-xl px-3 py-2
+                         focus:outline-none focus:border-indigo-400"
+            />
+            <button
+              type="submit"
+              className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="text-sm text-gray-400"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    )
   }
 
   return (
@@ -79,12 +141,21 @@ function SubtaskRow({
             <p className="text-xs text-gray-400 mt-0.5">Due {fmt(subtask.due_date)}</p>
           )}
         </div>
-        <button
-          onClick={handleDelete}
-          className="text-xs text-red-400 hover:text-red-600 flex-shrink-0"
-        >
-          Remove
-        </button>
+        <div className="flex gap-2 flex-shrink-0">
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200
+                       px-2 py-1 rounded-lg hover:bg-white transition-colors"
+          >
+            Edit
+          </button>
+          <button
+            onClick={handleDelete}
+            className="text-xs text-red-400 hover:text-red-600"
+          >
+            Remove
+          </button>
+        </div>
       </div>
 
       {/* Assigned contributors */}
@@ -92,13 +163,28 @@ function SubtaskRow({
         {subtask.subtask_assignments.map(a => (
           <div key={a.id}
                className="flex items-center gap-1.5 bg-white border border-gray-200
-                          rounded-full px-3 py-1">
-            <span className="text-xs font-medium text-gray-700">
-              {a.contributors?.name}
-            </span>
-            <span className={`text-xs px-1.5 py-0.5 rounded-full ${STATUS_COLOR[a.status]}`}>
-              {a.status.replace('_',' ')}
-            </span>
+                          rounded-xl px-3 py-1.5">
+            <div className="min-w-0">
+              <span className="text-xs font-medium text-gray-700">
+                {a.contributors?.name}
+              </span>
+              {a.contributors?.role_name && (
+                <span className="text-xs text-indigo-500 ml-1">
+                  · {a.contributors.role_name}
+                </span>
+              )}
+            </div>
+            <select
+              value={a.status}
+              onChange={e => handleStatusChange(a.id, e.target.value)}
+              className={`text-xs border-0 rounded-lg px-1.5 py-0.5 font-medium
+                          focus:outline-none focus:ring-1 focus:ring-indigo-300 cursor-pointer
+                          ${STATUS_COLOR[a.status]}`}
+            >
+              <option value="pending">pending</option>
+              <option value="in_progress">in progress</option>
+              <option value="completed">completed</option>
+            </select>
             <button
               onClick={() => handleRemove(a.contributor_id)}
               className="text-gray-300 hover:text-red-400 ml-0.5 text-xs leading-none"
@@ -118,7 +204,9 @@ function SubtaskRow({
               >
                 <option value="">Select contributor…</option>
                 {unassigned.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <option key={c.id} value={c.id}>
+                    {c.name}{c.role_name ? ` (${c.role_name})` : ''}
+                  </option>
                 ))}
               </select>
               <button onClick={handleAssign}
@@ -346,9 +434,7 @@ export default function TaskDetailClient({
               <div key={d.depends_on_task_id}
                    className="flex items-center justify-between gap-2 py-1.5
                               border-b border-gray-50 last:border-0">
-                <span className="text-xs text-gray-600">
-                  {d.tasks?.title}
-                </span>
+                <span className="text-xs text-gray-600">{d.tasks?.title}</span>
                 <button
                   onClick={() => removeDependency(task.id, d.depends_on_task_id, projectId)}
                   className="text-xs text-gray-300 hover:text-red-400"
