@@ -9,6 +9,7 @@ export async function addProjectNote(projectId: string, formData: FormData) {
     project_id: projectId,
     content:    formData.get('content') as string,
     is_pinned:  formData.get('is_pinned') === 'true',
+    visibility: (formData.get('visibility') as string) || 'admin_only',
   })
   if (error) throw new Error(error.message)
   revalidatePath(`/portal/project/${projectId}`)

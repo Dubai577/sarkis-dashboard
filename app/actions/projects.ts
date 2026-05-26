@@ -39,6 +39,22 @@ export async function updateProject(id: string, formData: FormData) {
   redirect(`/projects/${id}`)
 }
 
+export async function createNote(projectId: string, formData: FormData) {
+  const db = createAdminClient()
+
+  const { error } = await db.from('project_notes').insert({
+    project_id:  projectId,
+    content:     formData.get('content') as string,
+    is_pinned:   formData.get('is_pinned') === 'true',
+    visibility:  (formData.get('visibility') as string) || 'admin_only',
+  })
+
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/projects/${projectId}`)
+  redirect(`/projects/${projectId}`)
+}
+
 export async function deleteProject(id: string) {
   const db = createAdminClient()
 

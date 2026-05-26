@@ -14,9 +14,54 @@ const TASK_STATUS_COLOR: Record<string, string> = {
 
 function fmt(d: string | null) {
   if (!d) return null
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric',
-  })
+  const date = new Date(d)
+  if (isNaN(date.getTime())) return null
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+// ── Team member card with PIN reveal ────────────────────────────
+
+function TeamMemberCard({ m }: { m: any }) {
+  const [showPIN, setShowPIN] = useState(false)
+  const c = m.contributors
+  if (!c) return null
+
+  return (
+    <div className="border-b border-gray-50 last:border-0 py-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center
+                          justify-center text-indigo-700 text-xs font-bold flex-shrink-0">
+            {c.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-800">{c.name}</p>
+            {c.role_name && (
+              <p className="text-xs text-indigo-500">{c.role_name}</p>
+            )}
+            {c.email && <p className="text-xs text-gray-400">{c.email}</p>}
+            {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
+          </div>
+        </div>
+        {m.role === 'admin' && (
+          <span className="text-xs text-indigo-600 font-medium flex-shrink-0">admin</span>
+        )}
+      </div>
+      <div className="flex items-center gap-2 mt-1.5 pl-9">
+        <span className="text-xs text-gray-400">PIN:</span>
+        <span className={`font-mono text-xs font-bold tracking-widest
+                          ${showPIN ? 'text-gray-800' : 'text-gray-300 select-none'}`}>
+          {showPIN ? (c.pin ?? '——') : '••••'}
+        </span>
+        <button
+          onClick={() => setShowPIN(v => !v)}
+          className="text-xs text-indigo-500 hover:text-indigo-700"
+        >
+          {showPIN ? 'Hide' : 'Show'}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // ── Task card ────────────────────────────────────────────────────
@@ -47,7 +92,6 @@ function TaskCard({
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      {/* Task header */}
       <button
         onClick={() => setExpanded(v => !v)}
         className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
@@ -72,7 +116,6 @@ function TaskCard({
         </div>
       </button>
 
-      {/* Subtasks */}
       {expanded && (
         <div className="border-t border-gray-100 divide-y divide-gray-50">
           {task.subtasks?.length > 0 ? task.subtasks.map((s: any) => (
@@ -86,7 +129,6 @@ function TaskCard({
                 </div>
               </div>
 
-              {/* Assignments */}
               <div className="mt-2 space-y-1.5">
                 {s.subtask_assignments?.map((a: any) => (
                   <div key={a.id} className="flex items-center gap-2">
@@ -106,7 +148,6 @@ function TaskCard({
                   </div>
                 ))}
 
-                {/* Assign button */}
                 {assigningId === s.id ? (
                   <div className="flex items-center gap-2 mt-1">
                     <select
@@ -143,7 +184,6 @@ function TaskCard({
             <div className="px-4 py-3 text-xs text-gray-400 italic">No sections yet.</div>
           )}
 
-          {/* Add subtask */}
           {addingSub ? (
             <form
               action={async (fd) => {
@@ -218,7 +258,6 @@ export default function ProjectAdminPortal({
           </button>
         </div>
 
-        {/* New task form */}
         {addingTask && (
           <form
             action={async (fd) => {
@@ -269,29 +308,18 @@ export default function ProjectAdminPortal({
 
         {/* Team */}
         <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">
+          <h3 className="text-sm font-semibold text-gray-700 mb-1">
             Team ({members.length})
           </h3>
-          <div className="space-y-2">
-            {members.map((m: any) => {
-              const c = m.contributors
-              if (!c) return null
-              return (
-                <div key={m.contributor_id} className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center
-                                  justify-center text-indigo-700 text-xs font-bold flex-shrink-0">
-                    {c.name.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-gray-800 truncate">{c.name}</p>
-                  </div>
-                  {m.role === 'admin' && (
-                    <span className="text-xs text-indigo-600 font-medium">admin</span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+          {members.length > 0 ? (
+            <div>
+              {members.map((m: any) => (
+                <TeamMemberCard key={m.contributor_id} m={m} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 italic">No members yet.</p>
+          )}
         </div>
 
         {/* Notes */}
@@ -317,11 +345,17 @@ export default function ProjectAdminPortal({
                         placeholder="Write a note…"
                         className="w-full text-xs border border-gray-200 rounded-xl px-3 py-2
                                    focus:outline-none focus:border-indigo-400 resize-none" />
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <label className="flex items-center gap-1.5 text-xs text-gray-500">
                   <input type="checkbox" name="is_pinned" value="true" className="rounded" />
-                  Pin note
+                  Pin
                 </label>
+                <select name="visibility" defaultValue="admin_only"
+                        className="text-xs border border-gray-200 rounded-lg px-2 py-1
+                                   bg-white focus:outline-none focus:border-indigo-400">
+                  <option value="admin_only">Admin only</option>
+                  <option value="contributors">Everyone</option>
+                </select>
                 <button type="submit"
                         className="ml-auto bg-indigo-600 text-white px-3 py-1.5 rounded-lg
                                    text-xs font-semibold">
@@ -336,6 +370,11 @@ export default function ProjectAdminPortal({
                  className="text-xs text-gray-600 border-l-2 border-gray-200
                             pl-2.5 py-1 leading-relaxed mb-2">
               {note.is_pinned && <span className="mr-1">📌</span>}
+              {note.visibility === 'contributors' && (
+                <span className="text-xs bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded mr-1">
+                  shared
+                </span>
+              )}
               {note.content}
               <span className="block text-gray-400 mt-0.5">
                 {new Date(note.created_at).toLocaleDateString('en-US', {

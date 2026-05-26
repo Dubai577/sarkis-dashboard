@@ -56,7 +56,7 @@ export default async function ProjectDetail({ params }: { params: Promise<{ id: 
       .order('created_at', { ascending: false }),
     db.from('contributors').select('id, name, email').order('name'),
     db.from('project_members')
-      .select('contributor_id, role, contributors(id, name, email, pin)')
+      .select('contributor_id, role, contributors(id, name, email, phone, pin, role_name, notif_frequency)')
       .eq('project_id', id)
       .order('created_at'),
     db.from('admin_notifications')

@@ -2,6 +2,7 @@
 
 import AdminProjectLink from './AdminProjectLink'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { NotifFrequency } from '@/lib/types/portal'
 
 const FREQ_LABELS: Record<NotifFrequency, string> = {
@@ -46,14 +47,24 @@ function ResourceItem({ r }: { r: any }) {
 // ── Subtask row ──────────────────────────────────────────────────
 
 function SubtaskRow({ subtask }: { subtask: any }) {
+  const router = useRouter()
   const [status,      setStatus]      = useState(subtask.status)
   const [updates,     setUpdates]     = useState(subtask.updates)
   const [showUpdate,  setShowUpdate]  = useState(false)
   const [showRes,     setShowRes]     = useState(false)
+  const [showTeam,    setShowTeam]    = useState(false)
   const [updateText,  setUpdateText]  = useState('')
   const [posting,     setPosting]     = useState(false)
   const [completing,  setCompleting]  = useState(false)
+
+  const [showResource, setShowResource] = useState(false)
+  const [resType,      setResType]      = useState<'link' | 'note'>('link')
+  const [resLabel,     setResLabel]     = useState('')
+  const [resContent,   setResContent]   = useState('')
+  const [postingRes,   setPostingRes]   = useState(false)
+
   const overdue = isOverdue(subtask.subtask_due, status)
+  const teammates: any[] = subtask.teammates ?? []
 
   async function handleStatusChange(newStatus: string) {
     setCompleting(true)
@@ -81,6 +92,27 @@ function SubtaskRow({ subtask }: { subtask: any }) {
       setShowUpdate(false)
     }
     setPosting(false)
+  }
+
+  async function handleAddResource() {
+    if (!resContent.trim()) return
+    setPostingRes(true)
+    const res = await fetch(`/api/portal/subtasks/${subtask.assignment_id}/resources`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        type:    resType,
+        label:   resLabel.trim() || null,
+        content: resContent.trim(),
+      }),
+    })
+    if (res.ok) {
+      setResContent('')
+      setResLabel('')
+      setShowResource(false)
+      router.refresh()
+    }
+    setPostingRes(false)
   }
 
   return (
@@ -189,6 +221,103 @@ function SubtaskRow({ subtask }: { subtask: any }) {
           <div className="mt-3 pl-8 bg-gray-50 rounded-xl p-3 space-y-1">
             <p className="text-xs font-medium text-gray-500 mb-2">Shared resources</p>
             {subtask.resources.map((r: any) => <ResourceItem key={r.id} r={r} />)}
+          </div>
+        )}
+
+        {/* Share resource */}
+        <div className="mt-3 pl-8">
+          {showResource ? (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                {(['link', 'note'] as const).map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setResType(t)}
+                    className={`text-xs px-3 py-1 rounded-lg font-medium border transition-colors
+                               ${resType === t
+                                 ? 'bg-indigo-600 text-white border-indigo-600'
+                                 : 'bg-white text-gray-600 border-gray-200'}`}
+                  >
+                    {t === 'link' ? '🔗 Link' : '📝 Note'}
+                  </button>
+                ))}
+              </div>
+              <input
+                value={resLabel}
+                onChange={e => setResLabel(e.target.value)}
+                placeholder="Label (optional)"
+                className="w-full text-xs border border-gray-200 rounded-xl px-3 py-2
+                           focus:outline-none focus:border-indigo-400"
+              />
+              {resType === 'link' ? (
+                <input
+                  value={resContent}
+                  onChange={e => setResContent(e.target.value)}
+                  placeholder="https://…"
+                  className="w-full text-xs border border-gray-200 rounded-xl px-3 py-2
+                             focus:outline-none focus:border-indigo-400"
+                />
+              ) : (
+                <textarea
+                  value={resContent}
+                  onChange={e => setResContent(e.target.value)}
+                  placeholder="Note content…"
+                  rows={2}
+                  className="w-full text-xs border border-gray-200 rounded-xl px-3 py-2
+                             focus:outline-none focus:border-indigo-400 resize-none"
+                />
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAddResource}
+                  disabled={postingRes || !resContent.trim()}
+                  className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg
+                             hover:bg-indigo-700 disabled:opacity-50 font-medium"
+                >
+                  {postingRes ? 'Sharing…' : 'Share'}
+                </button>
+                <button
+                  onClick={() => setShowResource(false)}
+                  className="text-xs text-gray-400"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowResource(true)}
+              className="text-xs text-gray-400 hover:text-gray-600 font-medium"
+            >
+              + Share resource
+            </button>
+          )}
+        </div>
+
+        {/* Team on this task */}
+        {teammates.length > 0 && (
+          <div className="mt-3 pl-8">
+            <button
+              onClick={() => setShowTeam(v => !v)}
+              className="text-xs text-gray-400 hover:text-gray-600 font-medium"
+            >
+              {showTeam ? 'Hide team' : `👥 ${teammates.length} teammate${teammates.length > 1 ? 's' : ''} on this task`}
+            </button>
+            {showTeam && (
+              <div className="mt-2 space-y-2">
+                {teammates.map((t: any, i: number) => (
+                  <div key={i} className="text-xs bg-gray-50 rounded-lg px-3 py-2">
+                    <p className="font-medium text-gray-700">{t.name}</p>
+                    {t.role_name && (
+                      <p className="text-indigo-500 mt-0.5">{t.role_name}</p>
+                    )}
+                    {t.email && <p className="text-gray-400 mt-0.5">{t.email}</p>}
+                    {t.phone && <p className="text-gray-400">{t.phone}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

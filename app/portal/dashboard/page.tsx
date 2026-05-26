@@ -13,7 +13,7 @@ export default async function PortalDashboardPage() {
 
   const { data: contributor } = await db
     .from('contributors')
-    .select('id, name, email, phone, notif_frequency')
+    .select('id, name, email, phone, notif_frequency, role_name')
     .eq('access_token', token)
     .single()
 
@@ -45,6 +45,28 @@ export default async function PortalDashboardPage() {
     `)
     .eq('contributor_id', contributor.id)
     .order('created_at')
+
+  // Fetch teammates (other contributors assigned to the same subtasks)
+  const subtaskIds = (subtaskAssignments ?? [])
+    .map(sa => (sa.subtasks as any)?.id)
+    .filter(Boolean)
+
+  let teammatesBySubtask: Record<string, any[]> = {}
+  if (subtaskIds.length > 0) {
+    const { data: otherAssignments } = await db
+      .from('subtask_assignments')
+      .select('subtask_id, contributors(name, email, phone, role_name)')
+      .in('subtask_id', subtaskIds)
+      .neq('contributor_id', contributor.id)
+
+    for (const oa of otherAssignments ?? []) {
+      const c = (oa as any).contributors
+      if (!c) continue
+      const sid = (oa as any).subtask_id
+      if (!teammatesBySubtask[sid]) teammatesBySubtask[sid] = []
+      teammatesBySubtask[sid].push(c)
+    }
+  }
 
   // For project admins — fetch full project data for their admin projects
   const adminProjectIds = (memberships ?? [])
@@ -124,6 +146,7 @@ export default async function PortalDashboardPage() {
       subtask_due:     subtask.due_date,
       updates:         sa.subtask_updates ?? [],
       resources:       task.task_resources ?? [],
+      teammates:       teammatesBySubtask[subtask.id] ?? [],
     })
   }
 

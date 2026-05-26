@@ -20,6 +20,7 @@ interface Contributor {
   name:            string
   email:           string | null
   phone:           string | null
+  role_name:       string | null
   pin:             string | null
   notif_frequency: string
   created_at:      string
@@ -60,6 +61,16 @@ function ContributorForm({
             required
             defaultValue={defaults?.name}
             placeholder="e.g. Mary Girgis"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm
+                       focus:outline-none focus:border-indigo-400"
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+          <input
+            name="role_name"
+            defaultValue={defaults?.role_name ?? ''}
+            placeholder="e.g. Social Media Lead"
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm
                        focus:outline-none focus:border-indigo-400"
           />
@@ -188,6 +199,9 @@ function ContributorRow({
           </div>
           <div>
             <p className="font-semibold text-gray-900 text-sm">{contributor.name}</p>
+            {contributor.role_name && (
+              <p className="text-xs text-indigo-500 font-medium mt-0.5">{contributor.role_name}</p>
+            )}
             <div className="flex items-center gap-3 mt-0.5 flex-wrap">
               {contributor.email && (
                 <span className="text-xs text-gray-400">{contributor.email}</span>

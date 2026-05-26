@@ -16,6 +16,7 @@ export async function createContributor(formData: FormData) {
     name:             formData.get('name') as string,
     email:            (formData.get('email') as string)  || null,
     phone:            (formData.get('phone') as string)  || null,
+    role_name:        (formData.get('role_name') as string) || null,
     pin,
     pin_hash:         pin, // pgcrypto hashing happens via SQL trigger below
     notif_frequency:  formData.get('notif_frequency') as string || 'weekly',
@@ -34,6 +35,7 @@ export async function updateContributor(id: string, formData: FormData) {
     name:            formData.get('name') as string,
     email:           (formData.get('email') as string) || null,
     phone:           (formData.get('phone') as string) || null,
+    role_name:       (formData.get('role_name') as string) || null,
     notif_frequency: formData.get('notif_frequency') as string,
   }).eq('id', id)
 
