@@ -52,7 +52,7 @@ function SubtaskRow({ subtask }: { subtask: any }) {
   const [updates,     setUpdates]     = useState(subtask.updates)
   const [showUpdate,  setShowUpdate]  = useState(false)
   const [showRes,     setShowRes]     = useState(false)
-  const [showTeam,    setShowTeam]    = useState(false)
+
   const [updateText,  setUpdateText]  = useState('')
   const [posting,     setPosting]     = useState(false)
   const [completing,  setCompleting]  = useState(false)
@@ -298,26 +298,31 @@ function SubtaskRow({ subtask }: { subtask: any }) {
         {/* Team on this task */}
         {teammates.length > 0 && (
           <div className="mt-3 pl-8">
-            <button
-              onClick={() => setShowTeam(v => !v)}
-              className="text-xs text-gray-400 hover:text-gray-600 font-medium"
-            >
-              {showTeam ? 'Hide team' : `👥 ${teammates.length} teammate${teammates.length > 1 ? 's' : ''} on this task`}
-            </button>
-            {showTeam && (
-              <div className="mt-2 space-y-2">
-                {teammates.map((t: any, i: number) => (
-                  <div key={i} className="text-xs bg-gray-50 rounded-lg px-3 py-2">
-                    <p className="font-medium text-gray-700">{t.name}</p>
-                    {t.role_name && (
-                      <p className="text-indigo-500 mt-0.5">{t.role_name}</p>
-                    )}
-                    {t.email && <p className="text-gray-400 mt-0.5">{t.email}</p>}
-                    {t.phone && <p className="text-gray-400">{t.phone}</p>}
-                  </div>
-                ))}
-              </div>
-            )}
+            <p className="text-xs font-medium text-gray-500 mb-2">
+              👥 Team on this task
+            </p>
+            <div className="space-y-2">
+              {teammates.map((t: any, i: number) => (
+                <div key={i} className="text-xs bg-gray-50 rounded-lg px-3 py-2">
+                  <p className="font-medium text-gray-700">{t.name}</p>
+                  {t.role_name && (
+                    <p className="text-indigo-500 mt-0.5">{t.role_name}</p>
+                  )}
+                  {t.email && (
+                    <a href={`mailto:${t.email}`}
+                       className="text-gray-400 hover:text-indigo-600 mt-0.5 block">
+                      {t.email}
+                    </a>
+                  )}
+                  {t.phone && (
+                    <a href={`tel:${t.phone}`}
+                       className="text-gray-400 hover:text-indigo-600 block">
+                      {t.phone}
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

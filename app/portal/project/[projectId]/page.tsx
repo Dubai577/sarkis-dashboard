@@ -87,7 +87,7 @@ export default async function PortalProjectAdminPage({
       .eq('project_id', projectId)
       .order('created_at', { ascending: false }),
     db.from('project_members')
-      .select('contributor_id, role, contributors(id, name, email, phone, pin)')
+      .select('contributor_id, role, contributors(id, name, email, phone, pin, role_name)')
       .eq('project_id', projectId),
     db.from('contributors').select('id, name, email').order('name'),
     db.from('subtask_updates')

@@ -13,7 +13,7 @@ export default async function PortalDashboardPage() {
 
   const { data: contributor } = await db
     .from('contributors')
-    .select('id, name, email, phone, notif_frequency')
+    .select('id, name, email, phone, role_name, notif_frequency')
     .eq('access_token', token)
     .single()
 
@@ -55,7 +55,7 @@ export default async function PortalDashboardPage() {
   if (subtaskIds.length > 0) {
     const { data: otherAssignments } = await db
       .from('subtask_assignments')
-      .select('subtask_id, contributors(name, email, phone)')
+      .select('subtask_id, contributors(name, email, phone, role_name)')
       .in('subtask_id', subtaskIds)
       .neq('contributor_id', contributor.id)
 

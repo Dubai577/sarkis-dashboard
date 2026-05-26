@@ -24,10 +24,10 @@ export default async function TaskDetailPage({
   ] = await Promise.all([
     db.from('tasks').select('*').eq('id', taskId).single(),
     db.from('subtasks')
-      .select(`*, subtask_assignments(id, status, completed_at, contributor_id, contributors(id, name))`)
+      .select(`*, subtask_assignments(*, contributors(id, name))`)
       .eq('task_id', taskId)
       .order('sort_order'),
-    db.from('contributors').select('id, name, email').order('name'),
+    db.from('contributors').select('id, name, email, role_name').order('name'),
     db.from('tasks').select('id, title').eq('project_id', projectId).neq('id', taskId),
     db.from('task_dependencies')
       .select(`depends_on_task_id, tasks!task_dependencies_depends_on_task_id_fkey(id, title)`)

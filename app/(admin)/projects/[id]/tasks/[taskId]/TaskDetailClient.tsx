@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   createSubtask, updateSubtask, deleteSubtask,
-  assignContributorToSubtask, removeSubtaskAssignment, updateSubtaskAssignmentStatus,
+  assignContributorToSubtask, removeSubtaskAssignment,
+  updateSubtaskAssignmentStatus, updateAssignmentRole,
   addDependency, removeDependency,
   addResource, deleteResource,
   updateTask, deleteTask,
@@ -15,8 +16,8 @@ import {
 interface Contributor { id: string; name: string; email: string | null; role_name?: string | null }
 interface SubtaskAssignment {
   id: string; status: string; completed_at: string | null
-  contributor_id: string
-  contributors: { id: string; name: string; role_name?: string | null } | null
+  contributor_id: string; assignment_role?: string | null
+  contributors: { id: string; name: string } | null
 }
 interface Subtask {
   id: string; title: string; description: string | null; due_date: string | null
@@ -49,18 +50,23 @@ function SubtaskRow({
   subtask: Subtask; contributors: Contributor[]; projectId: string; taskId: string
 }) {
   const router = useRouter()
-  const [editing,    setEditing]    = useState(false)
-  const [assigning,  setAssigning]  = useState(false)
-  const [selectedId, setSelectedId] = useState('')
+  const [editing,       setEditing]       = useState(false)
+  const [assigning,     setAssigning]     = useState(false)
+  const [selectedId,    setSelectedId]    = useState('')
+  const [assignRole,    setAssignRole]    = useState('')
+  const [editingRoleId, setEditingRoleId] = useState<string | null>(null)
+  const [roleInput,     setRoleInput]     = useState('')
 
   const assigned   = subtask.subtask_assignments.map(a => a.contributor_id)
   const unassigned = contributors.filter(c => !assigned.includes(c.id))
 
   async function handleAssign() {
     if (!selectedId) return
-    await assignContributorToSubtask(subtask.id, selectedId, taskId, projectId)
+    await assignContributorToSubtask(subtask.id, selectedId, taskId, projectId, assignRole)
     setSelectedId('')
+    setAssignRole('')
     setAssigning(false)
+    router.refresh()
   }
 
   async function handleRemove(contributorId: string) {
@@ -70,6 +76,12 @@ function SubtaskRow({
 
   async function handleStatusChange(assignmentId: string, status: string) {
     await updateSubtaskAssignmentStatus(assignmentId, status, taskId, projectId)
+    router.refresh()
+  }
+
+  async function handleRoleSave(assignmentId: string) {
+    await updateAssignmentRole(assignmentId, roleInput, taskId, projectId)
+    setEditingRoleId(null)
     router.refresh()
   }
 
@@ -162,41 +174,60 @@ function SubtaskRow({
       <div className="flex flex-wrap gap-2">
         {subtask.subtask_assignments.map(a => (
           <div key={a.id}
-               className="flex items-center gap-1.5 bg-white border border-gray-200
-                          rounded-xl px-3 py-1.5">
-            <div className="min-w-0">
+               className="flex flex-col gap-1 bg-white border border-gray-200 rounded-xl px-3 py-1.5">
+            <div className="flex items-center gap-1.5">
               <span className="text-xs font-medium text-gray-700">
                 {a.contributors?.name}
               </span>
-              {a.contributors?.role_name && (
-                <span className="text-xs text-indigo-500 ml-1">
-                  · {a.contributors.role_name}
-                </span>
-              )}
+              <select
+                value={a.status}
+                onChange={e => handleStatusChange(a.id, e.target.value)}
+                className={`text-xs border-0 rounded-lg px-1.5 py-0.5 font-medium
+                            focus:outline-none focus:ring-1 focus:ring-indigo-300 cursor-pointer
+                            ${STATUS_COLOR[a.status]}`}
+              >
+                <option value="pending">pending</option>
+                <option value="in_progress">in progress</option>
+                <option value="completed">completed</option>
+              </select>
+              <button
+                onClick={() => handleRemove(a.contributor_id)}
+                className="text-gray-300 hover:text-red-400 text-xs leading-none"
+              >×</button>
             </div>
-            <select
-              value={a.status}
-              onChange={e => handleStatusChange(a.id, e.target.value)}
-              className={`text-xs border-0 rounded-lg px-1.5 py-0.5 font-medium
-                          focus:outline-none focus:ring-1 focus:ring-indigo-300 cursor-pointer
-                          ${STATUS_COLOR[a.status]}`}
-            >
-              <option value="pending">pending</option>
-              <option value="in_progress">in progress</option>
-              <option value="completed">completed</option>
-            </select>
-            <button
-              onClick={() => handleRemove(a.contributor_id)}
-              className="text-gray-300 hover:text-red-400 ml-0.5 text-xs leading-none"
-            >
-              ×
-            </button>
+            {editingRoleId === a.id ? (
+              <div className="flex items-center gap-1.5">
+                <input
+                  value={roleInput}
+                  onChange={e => setRoleInput(e.target.value)}
+                  placeholder="Role (optional)"
+                  // eslint-disable-next-line jsx-a11y/no-autofocus
+                  autoFocus
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-0.5
+                             focus:outline-none w-28"
+                />
+                <button onClick={() => handleRoleSave(a.id)}
+                        className="text-xs text-indigo-600 font-medium">Save</button>
+                <button onClick={() => setEditingRoleId(null)}
+                        className="text-xs text-gray-400">✕</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                <span className={`text-xs ${a.assignment_role ? 'text-indigo-500' : 'text-gray-300 italic'}`}>
+                  {a.assignment_role ?? 'no role'}
+                </span>
+                <button
+                  onClick={() => { setEditingRoleId(a.id); setRoleInput(a.assignment_role ?? '') }}
+                  className="text-xs text-gray-300 hover:text-gray-500"
+                >✎</button>
+              </div>
+            )}
           </div>
         ))}
 
         {unassigned.length > 0 && (
           assigning ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={selectedId}
                 onChange={e => setSelectedId(e.target.value)}
@@ -209,6 +240,13 @@ function SubtaskRow({
                   </option>
                 ))}
               </select>
+              <input
+                value={assignRole}
+                onChange={e => setAssignRole(e.target.value)}
+                placeholder="Role (optional)"
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1
+                           focus:outline-none w-28"
+              />
               <button onClick={handleAssign}
                       className="text-xs bg-indigo-600 text-white px-2 py-1 rounded-lg">
                 Add

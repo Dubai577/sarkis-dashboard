@@ -76,16 +76,29 @@ export async function deleteSubtask(subtaskId: string, taskId: string, projectId
 // ── Subtask assignments ──────────────────────────────────────────
 
 export async function assignContributorToSubtask(
-  subtaskId:     string,
-  contributorId: string,
-  taskId:        string,
-  projectId:     string,
+  subtaskId:      string,
+  contributorId:  string,
+  taskId:         string,
+  projectId:      string,
+  assignmentRole?: string,
 ) {
   const db = createAdminClient()
-  const { error } = await db.from('subtask_assignments').upsert({
-    subtask_id:     subtaskId,
-    contributor_id: contributorId,
-  }, { onConflict: 'subtask_id,contributor_id', ignoreDuplicates: true })
+  const row: any = { subtask_id: subtaskId, contributor_id: contributorId }
+  if (assignmentRole?.trim()) row.assignment_role = assignmentRole.trim()
+  const { error } = await db.from('subtask_assignments').upsert(
+    row, { onConflict: 'subtask_id,contributor_id', ignoreDuplicates: true }
+  )
+  if (error) throw new Error(error.message)
+  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+}
+
+export async function updateAssignmentRole(
+  assignmentId: string, role: string, taskId: string, projectId: string,
+) {
+  const db = createAdminClient()
+  const { error } = await db.from('subtask_assignments')
+    .update({ assignment_role: role.trim() || null })
+    .eq('id', assignmentId)
   if (error) throw new Error(error.message)
   revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
 }
