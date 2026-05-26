@@ -12,7 +12,9 @@ const FREQ_LABELS: Record<NotifFrequency, string> = {
 
 function fmt(d: string | null) {
   if (!d) return null
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const date = new Date(d)
+  if (isNaN(date.getTime())) return null
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 function isOverdue(d: string | null, status: string) {
@@ -86,7 +88,7 @@ function SubtaskRow({ subtask }: { subtask: any }) {
                      ${status === 'completed'
                        ? 'border-green-100 opacity-60'
                        : 'border-gray-200'}`}>
-      <div className="p-4">
+      <div className="p-5">
         <div className="flex items-start gap-3">
           {/* Complete button */}
           <button
@@ -198,7 +200,7 @@ function SubtaskRow({ subtask }: { subtask: any }) {
                    className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2
                               border-l-2 border-gray-200 leading-relaxed">
                 {u.content}
-                <span className="block text-gray-400 mt-0.5">{fmt(u.created_at)}</span>
+                <span className="block text-gray-400 mt-2">{fmt(u.created_at)}</span>
               </div>
             ))}
           </div>
@@ -300,13 +302,13 @@ function ContributorProjectGroup({ group }: { group: any }) {
         <span className="text-xs text-gray-400">{doneSubtasks}/{totalSubtasks} done</span>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         {group.tasks.map((task: any) => (
           <div key={task.task_id}>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 ml-1">
               {task.task_title}
             </p>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {task.subtasks.map((s: any) => (
                 <SubtaskRow key={s.assignment_id} subtask={s} />
               ))}
