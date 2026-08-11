@@ -42,11 +42,21 @@ export default function SarkisPage() {
     status: "Haven't Started", planned_date: '', due_date: '', notes: ''
   })
 
-  useEffect(() => { fetchTasks() }, [])
+  // Refetch when the server-side filters change. sortBy 'priority' is ordered
+  // client-side from priorityOrder, so it maps to the default server sort.
+  useEffect(() => {
+    const id = setTimeout(fetchTasks, search ? 250 : 0)   // debounce typing
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterStatus, sortBy, search])
 
   async function fetchTasks() {
+    const params = new URLSearchParams()
+    if (filterStatus && filterStatus !== 'All') params.set('status', filterStatus)
+    if (search.trim()) params.set('search', search.trim())
+    params.set('sort', sortBy === 'priority' ? 'category' : sortBy)
     try {
-      const { tasks: rows } = await api('/api/sarkis')
+      const { tasks: rows } = await api(`/api/sarkis?${params}`)
       setTasks(rows)
       setError('')
     } catch (e) {
@@ -100,34 +110,11 @@ export default function SarkisPage() {
     }
   }
 
-  const filtered = tasks
-    .filter(t => filterStatus === 'All' || t.status === filterStatus)
-    .filter(t => !search || t.title.toLowerCase().includes(search.toLowerCase()) ||
-      (t.notes && t.notes.toLowerCase().includes(search.toLowerCase())))
-
-  const sorted = [...filtered].sort((a, b) => {
-    switch (sortBy) {
-      case 'category': return (a.category || '').localeCompare(b.category || '')
-      case 'priority': return priorityOrder[a.priority] - priorityOrder[b.priority]
-      case 'status': return (a.status || '').localeCompare(b.status || '')
-      case 'title': return a.title.localeCompare(b.title)
-      case 'due_date': {
-        if (!a.due_date && !b.due_date) return 0
-        if (!a.due_date) return 1
-        if (!b.due_date) return -1
-        return new Date(a.due_date) - new Date(b.due_date)
-      }
-      case 'planned_date': {
-        if (!a.planned_date && !b.planned_date) return 0
-        if (!a.planned_date) return 1
-        if (!b.planned_date) return -1
-        return new Date(a.planned_date) - new Date(b.planned_date)
-      }
-      case 'newest': return new Date(b.created_at) - new Date(a.created_at)
-      case 'oldest': return new Date(a.created_at) - new Date(b.created_at)
-      default: return 0
-    }
-  })
+  // Status, search and ordering are applied by the query. Only priority is
+  // sorted here, because its stored values have no useful collation order.
+  const sorted = sortBy === 'priority'
+    ? [...tasks].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])
+    : tasks
 
   const grouped = sortBy === 'category'
     ? sorted.reduce((acc, task) => {

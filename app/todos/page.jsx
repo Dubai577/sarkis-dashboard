@@ -16,8 +16,14 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+import {
+  DAY_NAMES as DAYS,
+  currentWeekStart,
+  dateForDay,
+  dayName,
+  shortLabel,
+  today as todayIso,
+} from '@/lib/dates'
 
 const ROUTINES = [
   { name: 'Intro to Agbeya', days: 'daily' },
@@ -28,28 +34,6 @@ const ROUTINES = [
   { name: 'Sermon or Bible Study', days: 'alternating' },
   { name: 'Dupixent', days: 'wednesday' },
 ]
-
-// NOTE: the UTC conversion below is the known week_start bug. It is fixed in
-// Release 1, together with every other date helper, in one shared module.
-function getWeekStart() {
-  const now = new Date()
-  const day = now.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  const monday = new Date(now)
-  monday.setDate(now.getDate() + diff)
-  return monday.toISOString().split('T')[0]
-}
-
-function getDayDate(weekStart, dayIndex) {
-  const d = new Date(weekStart + 'T00:00:00')
-  d.setDate(d.getDate() + dayIndex)
-  return `${d.getMonth() + 1}/${d.getDate()}`
-}
-
-function getToday() {
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-  return days[new Date().getDay()]
-}
 
 function isRoutineApplicable(routine, dayIndex) {
   if (routine.days === 'daily') return true
@@ -113,17 +97,17 @@ export default function TodosPage() {
   const [todos, setTodos] = useState([])
   const [overdueTodos, setOverdueTodos] = useState([])
   const [routineChecks, setRoutineChecks] = useState({})
-  const [newTask, setNewTask] = useState({ title: '', day_of_week: getToday(), category: '', start_time: '', end_time: '' })
+  const [newTask, setNewTask] = useState({ title: '', day_of_week: dayName(todayIso()), category: '', start_time: '', end_time: '' })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showRoutines, setShowRoutines] = useState(true)
   const [showOverdue, setShowOverdue] = useState(true)
   const [viewMode, setViewMode] = useState('day')
-  const [selectedDay, setSelectedDay] = useState(getToday())
+  const [selectedDay, setSelectedDay] = useState(dayName(todayIso()))
   const [editTodo, setEditTodo] = useState(null)
 
-  const weekStart = getWeekStart()
-  const today = getToday()
+  const weekStart = currentWeekStart()
+  const today = dayName(todayIso())
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -150,7 +134,7 @@ export default function TodosPage() {
     }
   }
 
-  // Still browser-local. Moving routines into the database is Release 1.
+  // Still browser-local. Moving routines into the database is Release 2.
   function loadRoutineChecks() {
     const key = `routines_${weekStart}`
     const saved = localStorage.getItem(key)
@@ -167,7 +151,13 @@ export default function TodosPage() {
 
   async function addTodo() {
     if (!newTask.title.trim()) return
-    const payload = { ...newTask, week_start: weekStart, sort_order: todos.length }
+    const { day_of_week, ...rest } = newTask
+    const payload = {
+      ...rest,
+      // The server derives week_start and day_of_week from this.
+      task_date: dateForDay(weekStart, day_of_week),
+      sort_order: todos.filter(t => t.day_of_week === day_of_week).length,
+    }
     try {
       const { todo } = await api('/api/todos', { method: 'POST', body: JSON.stringify(payload) })
       setTodos([...todos, todo])
@@ -201,7 +191,7 @@ export default function TodosPage() {
           category: editTodo.category || '',
           start_time: editTodo.start_time || '',
           end_time: editTodo.end_time || '',
-          day_of_week: editTodo.day_of_week,
+          task_date: dateForDay(weekStart, editTodo.day_of_week),
         }),
       })
       setTodos(todos.map(t => t.id === todo.id ? todo : t))
@@ -229,7 +219,7 @@ export default function TodosPage() {
     try {
       const { todo } = await api(`/api/todos/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ day_of_week: day }),
+        body: JSON.stringify({ task_date: dateForDay(weekStart, day) }),
       })
       setTodos(todos.map(t => t.id === id ? todo : t))
       setOverdueTodos(overdueTodos.filter(t => t.id !== id))
@@ -303,7 +293,7 @@ export default function TodosPage() {
               className={`flex-shrink-0 px-3 py-2 rounded-xl text-sm transition flex flex-col items-center ${selectedDay === day && viewMode === 'day' ? 'bg-blue-600' : day === today ? 'bg-gray-700 ring-1 ring-blue-500' : 'bg-gray-800'}`}
             >
               <span>{day.slice(0, 3)}</span>
-              <span className="text-xs opacity-60">{getDayDate(weekStart, i)}</span>
+              <span className="text-xs opacity-60">{shortLabel(dateForDay(weekStart, i))}</span>
             </button>
           ))}
         </div>
@@ -425,7 +415,7 @@ export default function TodosPage() {
             {daysToRender.map((day) => {
               const dayIndex = DAYS.indexOf(day)
               const isToday = day === today
-              const dateLabel = getDayDate(weekStart, dayIndex)
+              const dateLabel = shortLabel(dateForDay(weekStart, dayIndex))
               const dayTodos = todosByDay[day]
 
               return (

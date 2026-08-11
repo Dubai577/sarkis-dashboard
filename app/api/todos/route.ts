@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { denyUnlessAdmin } from '@/lib/auth/guard'
 import { badRequest, isIsoDate, pick, readJson, serverError, validateScalars } from '@/lib/api/http'
+import { isMonday } from '@/lib/dates'
 
+/**
+ * week_start and day_of_week are derived from task_date by the database and are
+ * deliberately absent here — after migration 006 they cannot be written at all.
+ */
 const WRITABLE = [
-  'title', 'day_of_week', 'week_start', 'category',
+  'title', 'task_date', 'category',
   'start_time', 'end_time', 'is_complete', 'sort_order',
 ] as const
 
@@ -15,6 +20,7 @@ export async function GET(req: NextRequest) {
 
   const week = req.nextUrl.searchParams.get('week')
   if (!isIsoDate(week)) return badRequest('week must be a YYYY-MM-DD date.')
+  if (!isMonday(week)) return badRequest('week must be a Monday.')
 
   try {
     const db = createAdminClient()
@@ -48,8 +54,8 @@ export async function POST(req: NextRequest) {
   if (typeof insert.title !== 'string' || !insert.title.trim()) {
     return badRequest('title is required.')
   }
-  if (!isIsoDate(typeof insert.week_start === 'string' ? insert.week_start : null)) {
-    return badRequest('week_start must be a YYYY-MM-DD date.')
+  if (!isIsoDate(typeof insert.task_date === 'string' ? insert.task_date : null)) {
+    return badRequest('task_date must be a YYYY-MM-DD date.')
   }
   insert.title = insert.title.trim()
 

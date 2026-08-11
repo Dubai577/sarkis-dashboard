@@ -8,25 +8,67 @@ const WRITABLE = [
   'planned_date', 'due_date', 'notes', 'sort_order', 'start_time', 'end_time',
 ] as const
 
+/** Sort keys the client may ask for, mapped to a column and direction. */
+const SORTS = {
+  category:     { column: 'category',     ascending: true  },
+  status:       { column: 'status',       ascending: true  },
+  title:        { column: 'title',        ascending: true  },
+  due_date:     { column: 'due_date',     ascending: true  },
+  planned_date: { column: 'planned_date', ascending: true  },
+  newest:       { column: 'created_at',   ascending: false },
+  oldest:       { column: 'created_at',   ascending: true  },
+} as const
+
+const STATUSES = ["Haven't Started", 'Working on it', 'Done'] as const
+
+const MAX_ROWS = 500
+
 /**
- * GET /api/sarkis
+ * GET /api/sarkis?status=&sort=&search=
  *
- * Release 0 keeps the existing "fetch everything, filter in the browser"
- * behaviour so the migration stays behaviour-preserving; Release 1 moves the
- * status filter and sort into the query. Ordering is applied here so the list
- * arrives stable instead of in whatever order Postgres returns.
+ * Filtering, searching and ordering happen in the query rather than in the
+ * browser. 'priority' is deliberately absent from SORTS: its stored values do
+ * not sort meaningfully (42 of 82 rows are "Soon"), so the client keeps
+ * ordering that one case by its own rank map.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const denied = await denyUnlessAdmin()
   if (denied) return denied
 
+  const params = req.nextUrl.searchParams
+  const status = params.get('status')
+  const search = params.get('search')?.trim()
+  const sortKey = params.get('sort') ?? 'category'
+
+  if (status && status !== 'All' && !STATUSES.includes(status as typeof STATUSES[number])) {
+    return badRequest('Unknown status filter.')
+  }
+  if (search && search.length > 200) {
+    return badRequest('Search text is too long.')
+  }
+
   try {
     const db = createAdminClient()
-    const { data, error } = await db
-      .from('sarkis_tasks').select('*').order('created_at', { ascending: false })
+    let query = db.from('sarkis_tasks').select('*')
 
+    if (status && status !== 'All') query = query.eq('status', status)
+
+    if (search) {
+      // Escape PostgREST's or() delimiters so a comma or paren cannot break out
+      // of the filter expression.
+      const safe = search.replace(/[,()\\*]/g, ' ')
+      query = query.or(`title.ilike.%${safe}%,notes.ilike.%${safe}%`)
+    }
+
+    const sort = SORTS[sortKey as keyof typeof SORTS] ?? SORTS.category
+    query = query
+      .order(sort.column, { ascending: sort.ascending, nullsFirst: false })
+      .limit(MAX_ROWS)
+
+    const { data, error } = await query
     if (error) throw error
-    return NextResponse.json({ tasks: data ?? [] })
+
+    return NextResponse.json({ tasks: data ?? [], truncated: (data?.length ?? 0) >= MAX_ROWS })
   } catch (err) {
     return serverError('sarkis.GET', err)
   }

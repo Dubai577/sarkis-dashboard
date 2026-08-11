@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { denyUnlessAdmin } from '@/lib/auth/guard'
-import { badRequest, pick, readJson, serverError, validateScalars } from '@/lib/api/http'
+import { badRequest, isIsoDate, pick, readJson, serverError, validateScalars } from '@/lib/api/http'
 
+/** Moving a task between days is a change of task_date; the rest is derived. */
 const WRITABLE = [
-  'title', 'day_of_week', 'week_start', 'category',
+  'title', 'task_date', 'category',
   'start_time', 'end_time', 'is_complete', 'sort_order',
 ] as const
 
@@ -28,6 +29,10 @@ export async function PATCH(
       return badRequest('title cannot be empty.')
     }
     patch.title = patch.title.trim()
+  }
+
+  if ('task_date' in patch && !isIsoDate(patch.task_date as string)) {
+    return badRequest('task_date must be a YYYY-MM-DD date.')
   }
 
   // completed_at is derived here, never accepted from the client, so local
