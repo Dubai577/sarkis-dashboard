@@ -1,10 +1,6 @@
 import { Resend } from 'resend'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
+import { createAdminClient } from '@/lib/supabase/admin'
+import { denyUnlessCron } from '@/lib/auth/guard'
 
 function getWeekStart() {
   const now = new Date()
@@ -21,12 +17,13 @@ function getToday() {
 }
 
 export async function GET(req) {
-  const resend = new Resend(process.env.RESEND_API_KEY)
+  // Vercel sends `Authorization: Bearer $CRON_SECRET` on cron invocations.
+  // This endpoint sends email, so it must never be callable without it.
+  const denied = denyUnlessCron(req)
+  if (denied) return denied
 
-  console.log('API KEY:', process.env.RESEND_API_KEY ? 'found' : 'missing')
-if (!process.env.RESEND_API_KEY) {
-  return Response.json({ error: 'missing api key' }, { status: 500 })
-}
+  const supabase = createAdminClient()
+  const resend = new Resend(process.env.RESEND_API_KEY)
 
   const weekStart = getWeekStart()
   const today = getToday()

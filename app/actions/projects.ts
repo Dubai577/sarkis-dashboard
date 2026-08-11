@@ -3,8 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireAdmin } from '@/lib/auth/guard'
 
 export async function createProject(formData: FormData) {
+  await requireAdmin()
+
   const db = createAdminClient()
 
   const { error } = await db.from('projects').insert({
@@ -22,6 +25,8 @@ export async function createProject(formData: FormData) {
 }
 
 export async function updateProject(id: string, formData: FormData) {
+  await requireAdmin()
+
   const db = createAdminClient()
 
   const { error } = await db.from('projects').update({
@@ -40,6 +45,8 @@ export async function updateProject(id: string, formData: FormData) {
 }
 
 export async function createNote(projectId: string, formData: FormData) {
+  await requireAdmin()
+
   const db = createAdminClient()
 
   const { error } = await db.from('project_notes').insert({
@@ -56,6 +63,8 @@ export async function createNote(projectId: string, formData: FormData) {
 }
 
 export async function deleteProject(id: string) {
+  await requireAdmin()
+
   const db = createAdminClient()
 
   const { error } = await db.from('projects').delete().eq('id', id)

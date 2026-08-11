@@ -8,8 +8,11 @@ export default async function ContributorsPage() {
   const db = createAdminClient()
 
   const [{ data: contributors }, { data: projects }] = await Promise.all([
+    // Select columns explicitly, never `select('*')`. Props on a Server
+    // Component are serialized into the payload sent to the browser, so any
+    // column fetched here leaves the server whether or not it is rendered.
     db.from('contributors')
-      .select('*')
+      .select('id, name, email, phone, role_name, pin, notif_frequency, created_at')
       .order('name'),
     db.from('projects')
       .select('id, name, color')

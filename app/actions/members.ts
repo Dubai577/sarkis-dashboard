@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireAdmin } from '@/lib/auth/guard'
 
 function generatePIN(): string {
   return Math.floor(1000 + Math.random() * 9000).toString()
@@ -12,6 +13,8 @@ export async function addProjectMember(
   contributorId: string,
   role:          'contributor' | 'admin'
 ) {
+  await requireAdmin()
+
   const db = createAdminClient()
   const { error } = await db.from('project_members').upsert({
     project_id:     projectId,
@@ -27,6 +30,8 @@ export async function updateMemberRole(
   contributorId: string,
   role:          'contributor' | 'admin'
 ) {
+  await requireAdmin()
+
   const db = createAdminClient()
   await db.from('project_members')
     .update({ role })
@@ -39,6 +44,8 @@ export async function removeProjectMember(
   projectId:     string,
   contributorId: string,
 ) {
+  await requireAdmin()
+
   const db = createAdminClient()
   await db.from('project_members')
     .delete()
@@ -48,6 +55,8 @@ export async function removeProjectMember(
 }
 
 export async function createAndAddContributor(projectId: string, formData: FormData) {
+  await requireAdmin()
+
   const db  = createAdminClient()
   const pin = generatePIN()
 

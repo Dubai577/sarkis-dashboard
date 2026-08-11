@@ -1,30 +1,15 @@
-import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
 /**
- * Standard SSR Supabase client — respects RLS via the anon key.
- * Use this in contributor-facing Server Components and Route Handlers.
+ * Read the contributor access token from the HttpOnly cookie set by
+ * /api/portal/auth. Portal pages resolve the contributor from this token
+ * server-side and then query with the service-role client.
  *
- * For contributor API calls, also pass the x-contributor-token header
- * so that the get_contributor_id() RLS helper can resolve the session.
+ * The anon-key SSR client that used to live here was removed in Release 0:
+ * nothing called it, and once RLS is enabled with no anon policies it would
+ * return empty result sets anyway. Everything server-side now goes through
+ * createAdminClient() with authorization enforced in lib/auth/guard.ts.
  */
-export async function createServerSupabaseClient() {
-  const cookieStore = await cookies()
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name)              { return cookieStore.get(name)?.value },
-        set(name, value, opts) { try { cookieStore.set({ name, value, ...opts }) } catch {} },
-        remove(name, opts)     { try { cookieStore.set({ name, value: '', ...opts }) } catch {} },
-      },
-    }
-  )
-}
-
-/** Read the contributor access token from the HttpOnly cookie. */
 export async function getContributorToken(): Promise<string | undefined> {
   const cookieStore = await cookies()
   return cookieStore.get('contributor_token')?.value

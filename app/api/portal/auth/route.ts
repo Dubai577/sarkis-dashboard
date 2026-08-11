@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { PORTAL_DISABLED, PORTAL_DISABLED_MESSAGE } from '@/lib/portal/status'
 
 export async function POST(req: NextRequest) {
+  // Closed until Release 5. Checked here as well as in proxy.ts so the PIN is
+  // never compared, even if the proxy matcher is later changed.
+  if (PORTAL_DISABLED) {
+    return NextResponse.json({ error: PORTAL_DISABLED_MESSAGE }, { status: 503 })
+  }
+
   try {
     const { pin } = await req.json()
 

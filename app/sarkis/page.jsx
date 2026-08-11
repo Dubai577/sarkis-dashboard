@@ -1,7 +1,20 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
 import Link from 'next/link'
+
+async function api(path, options) {
+  const res = await fetch(path, {
+    ...options,
+    headers: options?.body ? { 'Content-Type': 'application/json' } : undefined,
+  })
+  if (res.status === 401) {
+    window.location.href = '/login?next=/sarkis'
+    throw new Error('Session expired.')
+  }
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Request failed.')
+  return data
+}
 
 const PRIORITIES = ['Urgent', 'Soon', 'Whenever', 'N/A']
 const STATUSES = ["Haven't Started", 'Working on it', 'Done']
@@ -18,6 +31,7 @@ const priorityOrder = { Urgent: 0, Soon: 1, Whenever: 2, 'N/A': 3 }
 export default function SarkisPage() {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('All')
   const [sortBy, setSortBy] = useState('category')
@@ -31,44 +45,59 @@ export default function SarkisPage() {
   useEffect(() => { fetchTasks() }, [])
 
   async function fetchTasks() {
-    const { data, error } = await supabase
-      .from('sarkis_tasks')
-      .select('*')
-    if (!error) setTasks(data)
-    setLoading(false)
+    try {
+      const { tasks: rows } = await api('/api/sarkis')
+      setTasks(rows)
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function addTask() {
     if (!newTask.title.trim()) return
-    const insert = { ...newTask }
-    if (!insert.planned_date) delete insert.planned_date
-    if (!insert.due_date) delete insert.due_date
-    const { data, error } = await supabase
-      .from('sarkis_tasks').insert([insert]).select()
-    if (!error) {
-      setTasks([...tasks, ...data])
+    try {
+      const { task } = await api('/api/sarkis', {
+        method: 'POST',
+        body: JSON.stringify(newTask),
+      })
+      setTasks([task, ...tasks])
       setNewTask({ title: '', category: '', subcategory: '', priority: 'Soon', status: "Haven't Started", planned_date: '', due_date: '', notes: '' })
       setShowForm(false)
+      setError('')
+    } catch (e) {
+      setError(e.message)
     }
   }
 
   async function saveEdit() {
     if (!editTask) return
-    const update = { ...editTask }
-    if (!update.planned_date) update.planned_date = null
-    if (!update.due_date) update.due_date = null
-    const { error } = await supabase
-      .from('sarkis_tasks').update(update).eq('id', editTask.id)
-    if (!error) {
-      setTasks(tasks.map(t => t.id === editTask.id ? editTask : t))
+    try {
+      // The route allowlists writable columns, so sending the whole row is safe:
+      // id, created_at and friends are dropped server-side rather than written back.
+      const { task } = await api(`/api/sarkis/${editTask.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(editTask),
+      })
+      setTasks(tasks.map(t => t.id === task.id ? task : t))
       setEditTask(null)
+      setError('')
+    } catch (e) {
+      setError(e.message)
     }
   }
 
   async function deleteTask(id) {
-    await supabase.from('sarkis_tasks').delete().eq('id', id)
-    setTasks(tasks.filter(t => t.id !== id))
-    setEditTask(null)
+    try {
+      await api(`/api/sarkis/${id}`, { method: 'DELETE' })
+      setTasks(tasks.filter(t => t.id !== id))
+      setEditTask(null)
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   const filtered = tasks
@@ -135,6 +164,12 @@ export default function SarkisPage() {
             className="ml-auto bg-blue-600 hover:bg-blue-500 rounded-lg px-4 py-2 text-sm font-medium transition"
           >+ New Task</button>
         </div>
+
+        {error && (
+          <div role="alert" className="bg-red-950 border border-red-800 text-red-300 text-sm rounded-xl px-4 py-3 mb-4">
+            {error}
+          </div>
+        )}
 
         <input
           className="w-full bg-gray-800 rounded-lg px-4 py-2 outline-none focus:ring-1 focus:ring-blue-500 text-sm mb-4"

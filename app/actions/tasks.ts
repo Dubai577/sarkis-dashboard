@@ -3,10 +3,13 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireOwnerOrProjectAdmin } from '@/lib/auth/guard'
 
 // ── Tasks ────────────────────────────────────────────────────────
 
 export async function createTask(projectId: string, formData: FormData) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db = createAdminClient()
   const { data: task, error } = await db.from('tasks').insert({
     project_id:  projectId,
@@ -21,6 +24,8 @@ export async function createTask(projectId: string, formData: FormData) {
 }
 
 export async function updateTask(taskId: string, projectId: string, formData: FormData) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db = createAdminClient()
   const { error } = await db.from('tasks').update({
     title:       formData.get('title') as string,
@@ -34,6 +39,8 @@ export async function updateTask(taskId: string, projectId: string, formData: Fo
 }
 
 export async function deleteTask(taskId: string, projectId: string) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db = createAdminClient()
   await db.from('tasks').delete().eq('id', taskId)
   revalidatePath(`/projects/${projectId}`)
@@ -43,6 +50,8 @@ export async function deleteTask(taskId: string, projectId: string) {
 // ── Subtasks ─────────────────────────────────────────────────────
 
 export async function createSubtask(taskId: string, projectId: string, formData: FormData) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db = createAdminClient()
   const { error } = await db.from('subtasks').insert({
     task_id:     taskId,
@@ -57,6 +66,8 @@ export async function createSubtask(taskId: string, projectId: string, formData:
 export async function updateSubtask(
   subtaskId: string, taskId: string, projectId: string, formData: FormData,
 ) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db = createAdminClient()
   const { error } = await db.from('subtasks').update({
     title:       formData.get('title') as string,
@@ -68,6 +79,8 @@ export async function updateSubtask(
 }
 
 export async function deleteSubtask(subtaskId: string, taskId: string, projectId: string) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db = createAdminClient()
   await db.from('subtasks').delete().eq('id', subtaskId)
   revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
@@ -82,6 +95,8 @@ export async function assignContributorToSubtask(
   projectId:      string,
   assignmentRole?: string,
 ) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db = createAdminClient()
   const row: any = { subtask_id: subtaskId, contributor_id: contributorId }
   if (assignmentRole?.trim()) row.assignment_role = assignmentRole.trim()
@@ -95,6 +110,8 @@ export async function assignContributorToSubtask(
 export async function updateAssignmentRole(
   assignmentId: string, role: string, taskId: string, projectId: string,
 ) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db = createAdminClient()
   const { error } = await db.from('subtask_assignments')
     .update({ assignment_role: role.trim() || null })
@@ -106,6 +123,8 @@ export async function updateAssignmentRole(
 export async function updateSubtaskAssignmentStatus(
   assignmentId: string, status: string, taskId: string, projectId: string,
 ) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db = createAdminClient()
   const { error } = await db.from('subtask_assignments')
     .update({ status })
@@ -120,6 +139,8 @@ export async function removeSubtaskAssignment(
   taskId:        string,
   projectId:     string,
 ) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db = createAdminClient()
   await db.from('subtask_assignments')
     .delete()
@@ -135,6 +156,8 @@ export async function addDependency(
   dependsOnTaskId:  string,
   projectId:        string,
 ) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db = createAdminClient()
   await db.from('task_dependencies').upsert({
     task_id:            taskId,
@@ -148,6 +171,8 @@ export async function removeDependency(
   dependsOnTaskId:  string,
   projectId:        string,
 ) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db = createAdminClient()
   await db.from('task_dependencies')
     .delete()
@@ -159,6 +184,8 @@ export async function removeDependency(
 // ── Resources ────────────────────────────────────────────────────
 
 export async function addResource(taskId: string, projectId: string, formData: FormData) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db   = createAdminClient()
   const type = formData.get('type') as 'link' | 'note'
   const { error } = await db.from('task_resources').insert({
@@ -177,6 +204,8 @@ export async function deleteResource(
   taskId:     string,
   projectId:  string,
 ) {
+  await requireOwnerOrProjectAdmin(projectId)
+
   const db = createAdminClient()
   await db.from('task_resources').delete().eq('id', resourceId)
   revalidatePath(`/projects/${projectId}/tasks/${taskId}`)

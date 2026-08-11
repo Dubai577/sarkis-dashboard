@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
 import Link from 'next/link'
 import {
   DndContext,
@@ -30,6 +29,8 @@ const ROUTINES = [
   { name: 'Dupixent', days: 'wednesday' },
 ]
 
+// NOTE: the UTC conversion below is the known week_start bug. It is fixed in
+// Release 1, together with every other date helper, in one shared module.
 function getWeekStart() {
   const now = new Date()
   const day = now.getDay()
@@ -55,6 +56,21 @@ function isRoutineApplicable(routine, dayIndex) {
   if (routine.days === 'wednesday') return dayIndex === 2
   if (routine.days === 'alternating') return dayIndex % 2 === 0
   return true
+}
+
+/** Every write goes through here so a failed request can never look like a success. */
+async function api(path, options) {
+  const res = await fetch(path, {
+    ...options,
+    headers: options?.body ? { 'Content-Type': 'application/json' } : undefined,
+  })
+  if (res.status === 401) {
+    window.location.href = '/login?next=/todos'
+    throw new Error('Session expired.')
+  }
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Request failed.')
+  return data
 }
 
 function SortableTask({ todo, onToggle, onEdit, onDelete }) {
@@ -99,6 +115,7 @@ export default function TodosPage() {
   const [routineChecks, setRoutineChecks] = useState({})
   const [newTask, setNewTask] = useState({ title: '', day_of_week: getToday(), category: '', start_time: '', end_time: '' })
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [showRoutines, setShowRoutines] = useState(true)
   const [showOverdue, setShowOverdue] = useState(true)
   const [viewMode, setViewMode] = useState('day')
@@ -121,23 +138,19 @@ export default function TodosPage() {
   }, [])
 
   async function fetchTodos() {
-    const { data } = await supabase
-      .from('todos')
-      .select('*')
-      .eq('week_start', weekStart)
-      .order('sort_order')
-    if (data) setTodos(data)
-
-    const { data: od } = await supabase
-      .from('todos')
-      .select('*')
-      .lt('week_start', weekStart)
-      .eq('is_complete', false)
-    if (od) setOverdueTodos(od)
-
-    setLoading(false)
+    try {
+      const { todos: week, overdue } = await api(`/api/todos?week=${weekStart}`)
+      setTodos(week)
+      setOverdueTodos(overdue)
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
+  // Still browser-local. Moving routines into the database is Release 1.
   function loadRoutineChecks() {
     const key = `routines_${weekStart}`
     const saved = localStorage.getItem(key)
@@ -154,64 +167,102 @@ export default function TodosPage() {
 
   async function addTodo() {
     if (!newTask.title.trim()) return
-    const insert = { ...newTask, week_start: weekStart, sort_order: todos.length }
-    if (!insert.category) delete insert.category
-    if (!insert.start_time) delete insert.start_time
-    if (!insert.end_time) delete insert.end_time
-    const { data } = await supabase.from('todos').insert([insert]).select()
-    if (data) {
-      setTodos([...todos, ...data])
+    const payload = { ...newTask, week_start: weekStart, sort_order: todos.length }
+    try {
+      const { todo } = await api('/api/todos', { method: 'POST', body: JSON.stringify(payload) })
+      setTodos([...todos, todo])
       setNewTask({ title: '', day_of_week: newTask.day_of_week, category: '', start_time: '', end_time: '' })
+      setError('')
+    } catch (e) {
+      setError(e.message)
     }
   }
 
   async function toggleTodo(id, current) {
-    await supabase.from('todos').update({
-      is_complete: !current,
-      completed_at: !current ? new Date().toISOString() : null
-    }).eq('id', id)
-    setTodos(todos.map(t => t.id === id ? { ...t, is_complete: !current } : t))
+    try {
+      const { todo } = await api(`/api/todos/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_complete: !current }),
+      })
+      setTodos(todos.map(t => t.id === id ? todo : t))
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   async function saveEdit() {
     if (!editTodo) return
-    await supabase.from('todos').update({
-      title: editTodo.title,
-      category: editTodo.category || null,
-      start_time: editTodo.start_time || null,
-      end_time: editTodo.end_time || null,
-      day_of_week: editTodo.day_of_week,
-    }).eq('id', editTodo.id)
-    setTodos(todos.map(t => t.id === editTodo.id ? { ...t, ...editTodo } : t))
-    setEditTodo(null)
+    try {
+      const { todo } = await api(`/api/todos/${editTodo.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title: editTodo.title,
+          category: editTodo.category || '',
+          start_time: editTodo.start_time || '',
+          end_time: editTodo.end_time || '',
+          day_of_week: editTodo.day_of_week,
+        }),
+      })
+      setTodos(todos.map(t => t.id === todo.id ? todo : t))
+      setOverdueTodos(overdueTodos.map(t => t.id === todo.id ? todo : t))
+      setEditTodo(null)
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   async function deleteTodo(id) {
-    await supabase.from('todos').delete().eq('id', id)
-    setTodos(todos.filter(t => t.id !== id))
-    setOverdueTodos(overdueTodos.filter(t => t.id !== id))
-    setEditTodo(null)
+    try {
+      await api(`/api/todos/${id}`, { method: 'DELETE' })
+      setTodos(todos.filter(t => t.id !== id))
+      setOverdueTodos(overdueTodos.filter(t => t.id !== id))
+      setEditTodo(null)
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   async function moveToDay(id, day) {
-    await supabase.from('todos').update({ day_of_week: day }).eq('id', id)
-    setTodos(todos.map(t => t.id === id ? { ...t, day_of_week: day } : t))
-    setOverdueTodos(overdueTodos.filter(t => t.id !== id))
+    try {
+      const { todo } = await api(`/api/todos/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ day_of_week: day }),
+      })
+      setTodos(todos.map(t => t.id === id ? todo : t))
+      setOverdueTodos(overdueTodos.filter(t => t.id !== id))
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   async function handleDragEnd(event, day) {
     const { active, over } = event
     if (!over || active.id === over.id) return
+
     const dayTodos = todos.filter(t => t.day_of_week === day)
     const oldIndex = dayTodos.findIndex(t => t.id === active.id)
     const newIndex = dayTodos.findIndex(t => t.id === over.id)
     const reordered = arrayMove(dayTodos, oldIndex, newIndex)
     const otherTodos = todos.filter(t => t.day_of_week !== day)
-    const updated = [...otherTodos, ...reordered.map((t, i) => ({ ...t, sort_order: i }))]
-    setTodos(updated)
-    await Promise.all(reordered.map((t, i) =>
-      supabase.from('todos').update({ sort_order: i }).eq('id', t.id)
-    ))
+    const previous = todos
+
+    setTodos([...otherTodos, ...reordered.map((t, i) => ({ ...t, sort_order: i }))])
+
+    try {
+      // One request for the whole list, not one per task.
+      await api('/api/todos/reorder', {
+        method: 'POST',
+        body: JSON.stringify({ ids: reordered.map(t => t.id) }),
+      })
+      setError('')
+    } catch (e) {
+      setTodos(previous)
+      setError(e.message)
+    }
   }
 
   const todosByDay = DAYS.reduce((acc, day) => {
@@ -236,6 +287,12 @@ export default function TodosPage() {
             <button onClick={() => setViewMode('week')} className={`px-3 py-1.5 rounded-lg text-sm ${viewMode === 'week' ? 'bg-blue-600' : 'bg-gray-800'}`}>Week</button>
           </div>
         </div>
+
+        {error && (
+          <div role="alert" className="bg-red-950 border border-red-800 text-red-300 text-sm rounded-xl px-4 py-3 mb-4">
+            {error}
+          </div>
+        )}
 
         {/* Day selector */}
         <div className="flex gap-2 mb-4 overflow-x-auto pb-1">

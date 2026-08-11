@@ -7,12 +7,15 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireAdmin } from '@/lib/auth/guard'
 
 function generatePIN(): string {
   return Math.floor(1000 + Math.random() * 9000).toString()
 }
 
 export async function createContributor(formData: FormData) {
+  await requireAdmin()
+
   const db  = createAdminClient()
   const pin = generatePIN()
 
@@ -33,6 +36,8 @@ export async function createContributor(formData: FormData) {
 }
 
 export async function updateContributor(id: string, formData: FormData) {
+  await requireAdmin()
+
   const db = createAdminClient()
 
   const { error } = await db.from('contributors').update({
@@ -50,6 +55,8 @@ export async function updateContributor(id: string, formData: FormData) {
 }
 
 export async function deleteContributor(id: string) {
+  await requireAdmin()
+
   const db = createAdminClient()
   const { error } = await db.from('contributors').delete().eq('id', id)
   if (error) throw new Error(error.message)
@@ -58,6 +65,8 @@ export async function deleteContributor(id: string) {
 }
 
 export async function resetPIN(id: string) {
+  await requireAdmin()
+
   const db  = createAdminClient()
   const pin = generatePIN()
 
@@ -74,6 +83,8 @@ export async function assignContributorToProject(
   contributorId: string,
   projectId:     string
 ) {
+  await requireAdmin()
+
   const db = createAdminClient()
 
   // Get all tasks in this project and create assignments for each

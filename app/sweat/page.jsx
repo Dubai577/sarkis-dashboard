@@ -1,7 +1,20 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
 import Link from 'next/link'
+
+async function api(path, options) {
+  const res = await fetch(path, {
+    ...options,
+    headers: options?.body ? { 'Content-Type': 'application/json' } : undefined,
+  })
+  if (res.status === 401) {
+    window.location.href = '/login?next=/sweat'
+    throw new Error('Session expired.')
+  }
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Request failed.')
+  return data
+}
 
 const ASSIGNMENT_TYPES = ['HW', 'Exam', 'Lab', 'Project', 'Other']
 
@@ -37,6 +50,7 @@ function urgencyColor(days) {
 export default function SweatPage() {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [hideComplete, setHideComplete] = useState(true)
   const [editTask, setEditTask] = useState(null)
@@ -48,45 +62,70 @@ export default function SweatPage() {
   useEffect(() => { fetchTasks() }, [])
 
   async function fetchTasks() {
-    const { data } = await supabase
-      .from('sweat_tasks')
-      .select('*')
-      .order('actual_due_date', { ascending: true, nullsFirst: false })
-    if (data) setTasks(data)
-    setLoading(false)
+    try {
+      const { tasks: rows } = await api('/api/sweat')
+      setTasks(rows)
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function addTask() {
     if (!newTask.title.trim() || !newTask.course.trim()) return
-    const insert = { ...newTask }
-    if (!insert.my_due_date) delete insert.my_due_date
-    if (!insert.actual_due_date) delete insert.actual_due_date
-    if (!insert.start_time) delete insert.start_time
-    if (!insert.end_time) delete insert.end_time
-    const { data } = await supabase.from('sweat_tasks').insert([insert]).select()
-    if (data) {
-      setTasks([...tasks, ...data].sort((a, b) => new Date(a.actual_due_date || a.my_due_date) - new Date(b.actual_due_date || b.my_due_date)))
+    try {
+      const { task } = await api('/api/sweat', {
+        method: 'POST',
+        body: JSON.stringify(newTask),
+      })
+      setTasks([...tasks, task].sort((a, b) => new Date(a.actual_due_date || a.my_due_date) - new Date(b.actual_due_date || b.my_due_date)))
       setNewTask({ course: '', title: '', my_due_date: '', actual_due_date: '', assignment_type: 'HW', start_time: '', end_time: '' })
       setShowForm(false)
+      setError('')
+    } catch (e) {
+      setError(e.message)
     }
   }
 
   async function saveEdit() {
     if (!editTask) return
-    await supabase.from('sweat_tasks').update(editTask).eq('id', editTask.id)
-    setTasks(tasks.map(t => t.id === editTask.id ? editTask : t))
-    setEditTask(null)
+    try {
+      const { task } = await api(`/api/sweat/${editTask.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(editTask),
+      })
+      setTasks(tasks.map(t => t.id === task.id ? task : t))
+      setEditTask(null)
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   async function toggleComplete(id, current) {
-    await supabase.from('sweat_tasks').update({ is_complete: !current }).eq('id', id)
-    setTasks(tasks.map(t => t.id === id ? { ...t, is_complete: !current } : t))
+    try {
+      const { task } = await api(`/api/sweat/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_complete: !current }),
+      })
+      setTasks(tasks.map(t => t.id === id ? task : t))
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   async function deleteTask(id) {
-    await supabase.from('sweat_tasks').delete().eq('id', id)
-    setTasks(tasks.filter(t => t.id !== id))
-    setEditTask(null)
+    try {
+      await api(`/api/sweat/${id}`, { method: 'DELETE' })
+      setTasks(tasks.filter(t => t.id !== id))
+      setEditTask(null)
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   const filtered = hideComplete ? tasks.filter(t => !t.is_complete) : tasks
@@ -104,6 +143,12 @@ export default function SweatPage() {
             </button>
           </div>
         </div>
+
+        {error && (
+          <div role="alert" className="bg-red-950 border border-red-800 text-red-300 text-sm rounded-xl px-4 py-3 mb-4">
+            {error}
+          </div>
+        )}
 
         <button
           onClick={() => setShowForm(!showForm)}

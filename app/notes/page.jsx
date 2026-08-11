@@ -1,11 +1,25 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
 import Link from 'next/link'
+
+async function api(path, options) {
+  const res = await fetch(path, {
+    ...options,
+    headers: options?.body ? { 'Content-Type': 'application/json' } : undefined,
+  })
+  if (res.status === 401) {
+    window.location.href = '/login?next=/notes'
+    throw new Error('Session expired.')
+  }
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Request failed.')
+  return data
+}
 
 export default function NotesPage() {
   const [notes, setNotes] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [newNote, setNewNote] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [editContent, setEditContent] = useState('')
@@ -13,37 +27,54 @@ export default function NotesPage() {
   useEffect(() => { fetchNotes() }, [])
 
   async function fetchNotes() {
-    const { data, error } = await supabase
-      .from('notes')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (!error) setNotes(data)
-    setLoading(false)
+    try {
+      const { notes: rows } = await api('/api/notes')
+      setNotes(rows)
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function addNote() {
     if (!newNote.trim()) return
-    const { data, error } = await supabase
-      .from('notes')
-      .insert([{ content: newNote }])
-      .select()
-    if (!error) {
-      setNotes([...data, ...notes])
+    try {
+      const { note } = await api('/api/notes', {
+        method: 'POST',
+        body: JSON.stringify({ content: newNote }),
+      })
+      setNotes([note, ...notes])
       setNewNote('')
+      setError('')
+    } catch (e) {
+      setError(e.message)
     }
   }
 
   async function saveEdit(id) {
-    await supabase.from('notes')
-      .update({ content: editContent, updated_at: new Date().toISOString() })
-      .eq('id', id)
-    setNotes(notes.map(n => n.id === id ? { ...n, content: editContent } : n))
-    setEditingId(null)
+    try {
+      const { note } = await api(`/api/notes/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ content: editContent }),
+      })
+      setNotes(notes.map(n => n.id === id ? note : n))
+      setEditingId(null)
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   async function deleteNote(id) {
-    await supabase.from('notes').delete().eq('id', id)
-    setNotes(notes.filter(n => n.id !== id))
+    try {
+      await api(`/api/notes/${id}`, { method: 'DELETE' })
+      setNotes(notes.filter(n => n.id !== id))
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   function formatDate(str) {
@@ -60,6 +91,12 @@ export default function NotesPage() {
           <Link href="/" className="text-gray-400 text-2xl">←</Link>
           <h1 className="text-2xl font-bold">Notes</h1>
         </div>
+
+        {error && (
+          <div role="alert" className="bg-red-950 border border-red-800 text-red-300 text-sm rounded-xl px-4 py-3 mb-4">
+            {error}
+          </div>
+        )}
 
         <div className="mb-6">
           <textarea
