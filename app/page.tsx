@@ -2,332 +2,300 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
-import { ItemRow, TodoRow, type RowTodo } from '@/components/rows'
+import { TodoRow, SlackBar, type RowTodo } from '@/components/rows'
 import { PossessionGlyph } from '@/components/ui/Possession'
-import { Button, EmptyState, ErrorBanner, Sheet, Spinner, inputClass } from '@/components/ui/primitives'
-import { addDays, longLabel, mediumLabel, today as todayIso } from '@/lib/dates'
+import { ErrorBanner, Spinner } from '@/components/ui/primitives'
+import { mediumLabel, shortLabel } from '@/lib/dates'
 
-interface TodayPayload {
+/**
+ * The dashboard — one place to see the whole thing.
+ *
+ * Dense and legible over impressive. Every panel is scannable at arm's length
+ * on a phone: no gauges, no sparklines, no chrome. Where a number would need
+ * interpreting, it says the words instead.
+ */
+
+interface Payload {
   date: string
   todos: RowTodo[]
-  overdue: RowTodo[]
-  dropped: {
-    id: string; title: string; possession: 'dropped'
-    category: { color: string; name: string } | null
-    waiting_person: { id: string; name: string } | null
-    waiting_since: string | null; nudge_after: number
+  overdueCount: number
+  droppedCount: number
+  week: { date: string; total: number; done: number; isToday: boolean }[]
+  projects: {
+    id: string; title: string; color: string | null
+    open: number; total: number; dropped: number
+    possession: 'mine' | 'theirs' | 'dropped'; isSchool: boolean
   }[]
-  routines: { id: string; name: string; checked: boolean }[]
-  upcoming: { id: string; title: string; planned_date: string; category: { color: string; name: string } | null }[]
+  school: { id: string; title: string; planned_date: string | null; due_date: string | null }[]
+  notes: { id: string; content: string; created_at: string }[]
+  routines: { total: number; done: number }
+  contributors: {
+    people: number
+    recentDone: { id: string; who: string; what: string; project: string | null; completed_at: string | null }[]
+    outstanding: { project: string; count: number }[]
+  }
 }
 
-export default function TodayPage() {
-  const [data, setData] = useState<TodayPayload | null>(null)
+export default function DashboardPage() {
+  const [data, setData] = useState<Payload | null>(null)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [routinesOpen, setRoutinesOpen] = useState(false)
-  const [reschedule, setReschedule] = useState<RowTodo | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/today')
+      const res = await fetch('/api/dashboard')
       if (res.status === 401) { window.location.href = '/login'; return }
       const body = await res.json()
-      if (!res.ok) throw new Error(body.error || 'Could not load today.')
+      if (!res.ok) throw new Error(body.error || 'Could not load the dashboard.')
       setData(body)
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load today.')
-    } finally {
-      setLoading(false)
+      setError(e instanceof Error ? e.message : 'Could not load the dashboard.')
     }
   }, [])
 
   useEffect(() => { load() }, [load])
-
   useEffect(() => {
     const onCapture = () => load()
     window.addEventListener('merc:captured', onCapture)
     return () => window.removeEventListener('merc:captured', onCapture)
   }, [load])
 
-  /** Optimistic: the checkbox is the most-tapped control and must feel instant. */
-  async function toggleTodo(todo: RowTodo) {
+  async function toggle(todo: RowTodo) {
     if (!data) return
     const next = !todo.is_complete
-    const patch = (list: RowTodo[]) =>
-      list.map(t => (t.id === todo.id ? { ...t, is_complete: next } : t))
-
-    setData({ ...data, todos: patch(data.todos), overdue: patch(data.overdue) })
-
+    setData({ ...data, todos: data.todos.map(t => (t.id === todo.id ? { ...t, is_complete: next } : t)) })
     try {
-      const res = await fetch(`/api/todos/${todo.id}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch(`/api/todos/${todo.id}/complete`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_complete: next }),
       })
-      if (!res.ok) throw new Error('That did not save.')
-      setError('')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'That did not save.')
-      load()
-    }
+    } catch { setError('That did not save.'); load() }
   }
 
-  async function toggleRoutine(id: string, checked: boolean) {
-    if (!data) return
-    setData({
-      ...data,
-      routines: data.routines.map(r => (r.id === id ? { ...r, checked } : r)),
-    })
-    try {
-      await fetch('/api/routines', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ routine_id: id, date: data.date, checked }),
-      })
-    } catch {
-      setError('That routine did not save.')
-      load()
-    }
-  }
+  if (error && !data) return <div className="p-4"><ErrorBanner message={error} onRetry={load} /></div>
+  if (!data) return <Spinner label="Loading" />
 
-  async function moveTodo(todo: RowTodo, date: string) {
-    try {
-      await fetch(`/api/todos/${todo.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_date: date }),
-      })
-      setReschedule(null)
-      load()
-    } catch {
-      setError('Could not move that.')
-    }
-  }
-
-  if (loading) return <Spinner label="Loading today" />
-
-  const open = data?.todos.filter(t => !t.is_complete) ?? []
-  const done = data?.todos.filter(t => t.is_complete) ?? []
-  const nothingAtAll =
-    open.length === 0 && (data?.overdue.length ?? 0) === 0 && (data?.dropped.length ?? 0) === 0
+  const open = data.todos.filter(t => !t.is_complete)
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-5">
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold">Today</h1>
-        <p className="text-sm text-ink-2">{data ? longLabel(data.date) : ''}</p>
-      </header>
+    <div className="mx-auto max-w-3xl px-3 py-4">
+      {error && <div className="mb-3"><ErrorBanner message={error} onRetry={load} /></div>}
 
-      {error && <div className="mb-4"><ErrorBanner message={error} onRetry={load} /></div>}
-
-      {/* Routines: seven glyphs, no titles at rest. They are not tasks and
-          must not read as a to-do list you are behind on. */}
-      {data && data.routines.length > 0 && (
-        <section className="mb-5">
-          <button
-            onClick={() => setRoutinesOpen(true)}
-            className="flex w-full items-center gap-2 rounded-md border border-line bg-surface px-3 py-2.5"
-            aria-label="Routines"
-          >
-            <div className="flex flex-1 items-center gap-1.5">
-              {data.routines.map(r => (
-                <span
-                  key={r.id}
-                  title={r.name}
-                  className={`h-2.5 w-2.5 rounded-full transition-colors ${
-                    r.checked ? 'bg-done' : 'border border-ink-3'
-                  }`}
-                />
-              ))}
-            </div>
-            <span className="text-[11px] tnum text-ink-3">
-              {data.routines.filter(r => r.checked).length}/{data.routines.length}
-            </span>
-          </button>
-        </section>
+      {/* Attention line: the two states nothing else surfaces. */}
+      {(data.overdueCount > 0 || data.droppedCount > 0) && (
+        <div className="mb-3 flex gap-1.5">
+          {data.droppedCount > 0 && (
+            <Link href="/today" className="flex-1 rounded-md border border-dropped/40 bg-dropped-soft px-2.5 py-1.5">
+              <span className="block text-[10px] uppercase tracking-wide text-dropped">Needs a nudge</span>
+              <span className="text-base tnum text-dropped">{data.droppedCount}</span>
+            </Link>
+          )}
+          {data.overdueCount > 0 && (
+            <Link href="/today" className="flex-1 rounded-md border border-line px-2.5 py-1.5">
+              <span className="block text-[10px] uppercase tracking-wide text-ink-3">Late</span>
+              <span className="text-base tnum text-ink-2">{data.overdueCount}</span>
+            </Link>
+          )}
+        </div>
       )}
 
-      {/* Dropped first: it is the state nothing else surfaces, and the one
-          that quietly kills projects. */}
-      {data && data.dropped.length > 0 && (
-        <Section
-          label="Needs a nudge"
-          count={data.dropped.length}
-          tone="dropped"
-          hint="Waiting longer than you meant to"
-        >
-          <div className="space-y-1.5">
-            {data.dropped.slice(0, 6).map(item => (
-              <ItemRow key={item.id} item={item} href={`/items/${item.id}`} />
-            ))}
-            {data.dropped.length > 6 && (
-              <Link href="/projects" className="block px-1 pt-1 text-xs text-ink-3">
-                {data.dropped.length - 6} more →
-              </Link>
-            )}
-          </div>
-        </Section>
-      )}
-
-      {data && data.overdue.length > 0 && (
-        <Section label="Late" count={data.overdue.length} tone="dropped" hint="From previous weeks">
-          <div className="space-y-1.5">
-            {data.overdue.map(todo => (
-              <TodoRow
-                key={todo.id}
-                todo={todo}
-                showDate
-                onToggle={() => toggleTodo(todo)}
-                onOpen={() => setReschedule(todo)}
-              />
-            ))}
-          </div>
-        </Section>
-      )}
-
-      <Section label="On today" count={open.length}>
+      {/* Today */}
+      <Panel title="Today" href="/today" meta={`${open.length} open · routines ${data.routines.done}/${data.routines.total}`}>
         {open.length === 0 ? (
-          nothingAtAll ? (
-            <EmptyState
-              title="Nothing scheduled."
-              hint="An empty day is usually correct here — most of the work has no date. The backlog is where it lives."
-              action={<Link href="/projects"><Button variant="quiet">Open projects</Button></Link>}
-            />
-          ) : (
-            <p className="px-1 py-3 text-sm text-ink-3">Nothing left on today.</p>
-          )
+          <p className="py-1.5 text-[13px] text-ink-3">Nothing scheduled.</p>
         ) : (
-          <div className="space-y-1.5">
-            {open.map(todo => (
-              <TodoRow
-                key={todo.id}
-                todo={todo}
-                onToggle={() => toggleTodo(todo)}
-                onOpen={() => setReschedule(todo)}
-              />
-            ))}
-          </div>
+          open.slice(0, 8).map(todo => (
+            <TodoRow key={todo.id} todo={todo} onToggle={() => toggle(todo)} />
+          ))
         )}
-      </Section>
+        {open.length > 8 && (
+          <Link href="/today" className="block pt-1 text-[11px] text-ink-3">+{open.length - 8} more</Link>
+        )}
+      </Panel>
 
-      {done.length > 0 && (
-        <Section label="Done" count={done.length} tone="done">
-          <div className="space-y-1.5">
-            {done.map(todo => (
-              <TodoRow key={todo.id} todo={todo} onToggle={() => toggleTodo(todo)} />
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {data && data.upcoming.length > 0 && (
-        <Section label="Coming up" count={data.upcoming.length} hint="Next seven days">
-          <div className="space-y-1.5">
-            {data.upcoming.map(item => (
-              <ItemRow key={item.id} item={item} href={`/items/${item.id}`} dense />
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {/* Routines, expanded */}
-      <Sheet open={routinesOpen} onClose={() => setRoutinesOpen(false)} title="Routines">
-        <div className="space-y-1">
-          {data?.routines.map(r => (
-            <button
-              key={r.id}
-              onClick={() => toggleRoutine(r.id, !r.checked)}
-              className="flex w-full items-center gap-3 rounded-md px-2 py-3 text-left hover:bg-surface-2"
-            >
-              <span
-                className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${
-                  r.checked ? 'bg-done' : 'border border-ink-3'
+      {/* Week strip */}
+      <Panel title="This week" href="/calendar?view=week">
+        <div className="flex gap-1">
+          {data.week.map(day => {
+            const pct = day.total > 0 ? (day.done / day.total) * 100 : 0
+            return (
+              <Link
+                key={day.date}
+                href={`/calendar?view=day&date=${day.date}`}
+                className={`flex-1 rounded-md border px-1 py-1.5 text-center ${
+                  day.isToday ? 'border-mine' : 'border-line'
                 }`}
               >
-                {r.checked && (
-                  <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
-                    <path d="M2.5 6.2l2.3 2.3 4.7-5" fill="none" stroke="var(--bg)" strokeWidth="2"
-                          strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
+                <span className="block text-[9px] uppercase text-ink-3">{shortLabel(day.date)}</span>
+                <span className={`block text-sm tnum ${day.total ? 'text-ink' : 'text-ink-3'}`}>
+                  {day.total || '·'}
+                </span>
+                <span className="mt-1 block h-[2px] rounded-full bg-surface-3">
+                  <span className="block h-full rounded-full bg-done" style={{ width: `${pct}%` }} />
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+      </Panel>
+
+      {/* Projects as small rings — 15+ visible without scrolling a list */}
+      <Panel title="Projects" href="/projects" meta={`${data.projects.length}`}>
+        <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-8">
+          {data.projects.map(p => (
+            <Link key={p.id} href={`/items/${p.id}`} className="flex flex-col items-center gap-1">
+              <Ring
+                open={p.open}
+                total={p.total}
+                color={p.color}
+                dropped={p.dropped > 0}
+                school={p.isSchool}
+              />
+              <span className="clamp-1 w-full text-center text-[9px] leading-tight text-ink-3">
+                {p.title}
               </span>
-              <span className={`text-sm ${r.checked ? 'text-ink-3 line-through' : 'text-ink'}`}>
-                {r.name}
-              </span>
-            </button>
+            </Link>
           ))}
         </div>
-      </Sheet>
+      </Panel>
 
-      {/* Reschedule — the common action on a task, so it is one tap from the row */}
-      <Sheet
-        open={!!reschedule}
-        onClose={() => setReschedule(null)}
-        title={reschedule?.title}
-      >
-        {reschedule && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-1.5">
-              {[
-                ['Today', todayIso()],
-                ['Tomorrow', addDays(todayIso(), 1)],
-                ['In a week', addDays(todayIso(), 7)],
-              ].map(([label, date]) => (
-                <button
-                  key={label}
-                  onClick={() => moveTodo(reschedule, date)}
-                  className="rounded-md border border-line bg-surface-2 py-2.5 text-xs"
-                >
-                  {label}
-                  <span className="mt-0.5 block text-[10px] text-ink-3">{mediumLabel(date)}</span>
-                </button>
-              ))}
+      {/* School: deadlines behave differently, so they read differently */}
+      {data.school.length > 0 && (
+        <Panel title="School" href="/list?category=School" meta="deadlines">
+          {data.school.map(s => (
+            <div key={s.id} className="border-b border-line/60 py-1.5 last:border-b-0">
+              <Link href={`/items/${s.id}`} className="clamp-1 block text-[13px]">{s.title}</Link>
+              {s.planned_date && s.due_date ? (
+                <SlackBar planned={s.planned_date} deadline={s.due_date} today={data.date} />
+              ) : (
+                <span className="text-[10px] tnum text-ink-3">
+                  {s.due_date ? `due ${mediumLabel(s.due_date)}` : `planned ${mediumLabel(s.planned_date!)}`}
+                </span>
+              )}
             </div>
-            <input
-              type="date"
-              defaultValue={reschedule.task_date}
-              onChange={e => e.target.value && moveTodo(reschedule, e.target.value)}
-              className={inputClass}
-            />
-            <Button
-              variant="danger"
-              full
-              onClick={async () => {
-                await fetch(`/api/todos/${reschedule.id}`, { method: 'DELETE' })
-                setReschedule(null)
-                load()
-              }}
-            >
-              Delete
-            </Button>
-          </div>
+          ))}
+        </Panel>
+      )}
+
+      {/* Service: contributor activity, read-only from the portal tables */}
+      <Panel
+        title="Service"
+        meta={`${data.contributors.people} people`}
+      >
+        {data.contributors.recentDone.length === 0 && data.contributors.outstanding.length === 0 ? (
+          <p className="py-1.5 text-[13px] text-ink-3">Nothing assigned in the portal.</p>
+        ) : (
+          <>
+            {data.contributors.recentDone.map(a => (
+              <div key={a.id} className="flex items-center gap-2 border-b border-line/60 py-1.5 last:border-b-0">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-done" />
+                <span className="clamp-1 flex-1 text-[13px]">
+                  <span className="text-ink">{a.who}</span>
+                  <span className="text-ink-2"> — {a.what}</span>
+                </span>
+                {a.project && <span className="shrink-0 text-[10px] text-ink-3">{a.project}</span>}
+              </div>
+            ))}
+            {data.contributors.outstanding.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-2">
+                {data.contributors.outstanding.map(o => (
+                  <span key={o.project}
+                        className="rounded-sm border border-line px-1.5 py-0.5 text-[10px] text-ink-3">
+                    {o.project} <span className="tnum text-ink-2">{o.count}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="pt-2 text-[10px] text-ink-3">
+              Portal is paused — this is read-only until it is rebuilt.
+            </p>
+          </>
         )}
-      </Sheet>
+      </Panel>
+
+      {/* Notes */}
+      <Panel title="Notes" href="/notes" meta={`${data.notes.length} recent`}>
+        <div className="columns-2 gap-1.5">
+          {data.notes.map(n => (
+            <Link key={n.id} href="/notes"
+                  className="mb-1.5 block break-inside-avoid rounded-md border border-line p-2 text-[11px] leading-snug text-ink-2">
+              <span className="clamp-2 block">{n.content}</span>
+            </Link>
+          ))}
+        </div>
+      </Panel>
     </div>
   )
 }
 
-function Section({
-  label, count, children, tone, hint,
+function Panel({
+  title, href, meta, children,
 }: {
-  label: string
-  count?: number
+  title: string
+  href?: string
+  meta?: string
   children: React.ReactNode
-  tone?: 'dropped' | 'done'
-  hint?: string
 }) {
-  const colour =
-    tone === 'dropped' ? 'text-dropped' : tone === 'done' ? 'text-done' : 'text-ink-2'
   return (
-    <section className="mb-5">
-      <div className="mb-2 flex items-baseline gap-2 px-1">
-        <h2 className={`text-[11px] font-medium uppercase tracking-wider ${colour}`}>{label}</h2>
-        {count !== undefined && <span className="text-[11px] tnum text-ink-3">{count}</span>}
-        {hint && <span className="ml-auto text-[11px] text-ink-3">{hint}</span>}
+    <section className="mb-4">
+      <div className="mb-1 flex items-baseline gap-2">
+        <h2 className="text-[11px] font-medium uppercase tracking-wider text-ink-2">{title}</h2>
+        {meta && <span className="text-[10px] tnum text-ink-3">{meta}</span>}
+        {href && <Link href={href} className="ml-auto text-[10px] text-ink-3">all →</Link>}
       </div>
       {children}
     </section>
+  )
+}
+
+/**
+ * A project at a glance: ring thickness is how much is open, the colour is the
+ * category, and a broken ring means something inside has been dropped. School
+ * gets a square so coursework is distinguishable without reading the label.
+ */
+function Ring({
+  open, total, color, dropped, school,
+}: {
+  open: number
+  total: number
+  color: string | null
+  dropped: boolean
+  school: boolean
+}) {
+  const size = 34
+  const r = 14
+  const circumference = 2 * Math.PI * r
+  const doneFraction = total > 0 ? (total - open) / total : 0
+
+  return (
+    <span className="relative grid place-items-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox="0 0 36 36" aria-hidden="true">
+        {school ? (
+          <rect x="4" y="4" width="28" height="28" rx="6" fill="none"
+                stroke="var(--border-2)" strokeWidth="3" />
+        ) : (
+          <circle cx="18" cy="18" r={r} fill="none" stroke="var(--border-2)" strokeWidth="3" />
+        )}
+        {!school && (
+          <circle
+            cx="18" cy="18" r={r} fill="none"
+            stroke={dropped ? 'var(--dropped)' : color ?? 'var(--mine)'}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray={`${circumference * doneFraction} ${circumference}`}
+            transform="rotate(-90 18 18)"
+            opacity={dropped ? 1 : 0.9}
+          />
+        )}
+        {school && (
+          <rect x="4" y="4" width="28" height="28" rx="6" fill="none"
+                stroke={color ?? 'var(--mine)'} strokeWidth="3"
+                strokeDasharray={`${112 * doneFraction} 112`} />
+        )}
+      </svg>
+      <span className={`absolute text-[10px] tnum ${dropped ? 'text-dropped' : 'text-ink-2'}`}>
+        {open}
+      </span>
+    </span>
   )
 }

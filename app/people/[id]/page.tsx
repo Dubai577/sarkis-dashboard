@@ -125,7 +125,7 @@ function Group({
       <div className="space-y-1.5">
         {items.map(item => (
           <div key={item.id}>
-            <ItemRow item={item} href={`/items/${item.id}`} dense />
+            <ItemRow item={item} href={`/items/${item.id}`} />
             {item.project && (
               <div className="px-2.5 pt-0.5 text-[10px] text-ink-3">{item.project}</div>
             )}

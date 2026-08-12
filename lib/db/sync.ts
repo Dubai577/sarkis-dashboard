@@ -5,8 +5,10 @@ import { today as todayIso, weekStart, addDays, type IsoDate } from '@/lib/dates
 /**
  * Materialize dated work into the week.
  *
- *   items.planned_date        → a todo
- *   sweat_tasks.my_due_date   → a todo
+ *   items.planned_date  →  a todo
+ *
+ * Coursework used to come from sweat_tasks; migration 012 moved it into items,
+ * so it now arrives through the same path as everything else.
  *
  * The materialized row keeps a real foreign key back to its source
  * (source_item_id / source_sweat_id, one or the other, enforced by a CHECK),
@@ -42,26 +44,30 @@ export async function runSync(now: IsoDate = todayIso()): Promise<SyncResult> {
       .select('id,title,planned_date,category_id')
       .not('planned_date', 'is', null)
       .is('archived_at', null),
-    db.from('sweat_tasks')
-      .select('id,title,course,my_due_date,actual_due_date')
-      .not('my_due_date', 'is', null)
-      .eq('is_complete', false),
-    db.from('todos')
-      .select('id,source_item_id,source_sweat_id,is_complete')
-      .eq('is_complete', false),
+    // sweat_tasks is retired: migration 012 moved coursework into items, so the
+    // item branch below already covers it. Reading both would double-materialize.
+    Promise.resolve({ data: [] as { id: string; title: string; course: string; my_due_date: string | null }[] }),
+    // Completed rows count too. Completing a synced todo no longer archives its
+    // source, so matching only open rows would re-materialize everything the
+    // moment it was ticked off.
+    db.from('todos').select('id,source_item_id,source_sweat_id,origin_date,is_complete'),
   ])
 
-  const openItemSources = new Set(
-    (existing ?? []).filter(t => t.source_item_id).map(t => t.source_item_id as string),
-  )
-  const openSweatSources = new Set(
-    (existing ?? []).filter(t => t.source_sweat_id).map(t => t.source_sweat_id as string),
+  /**
+   * Already materialized, keyed by source AND the date it was materialized for.
+   * Moving a source's planned_date to a new day legitimately produces a new
+   * todo; ticking one off does not bring it back.
+   */
+  const seen = new Set(
+    (existing ?? [])
+      .filter(t => t.source_item_id || t.source_sweat_id)
+      .map(t => `${t.source_item_id ?? t.source_sweat_id}|${t.origin_date}`),
   )
 
   const rows: Record<string, unknown>[] = []
 
   for (const item of items ?? []) {
-    if (openItemSources.has(item.id)) { result.skipped += 1; continue }
+    if (seen.has(`${item.id}|${item.planned_date}`)) { result.skipped += 1; continue }
     const origin = item.planned_date as IsoDate
     const landed = landOn(origin)
     rows.push({
@@ -73,20 +79,6 @@ export async function runSync(now: IsoDate = todayIso()): Promise<SyncResult> {
       source_item_id: item.id,
     })
     result.detail.push({ source: 'item', title: item.title, landed, origin })
-  }
-
-  for (const task of sweat ?? []) {
-    if (openSweatSources.has(task.id)) { result.skipped += 1; continue }
-    const origin = task.my_due_date as IsoDate
-    const landed = landOn(origin)
-    rows.push({
-      title: `${task.course}: ${task.title}`,
-      task_date: landed,
-      origin_date: origin,
-      placement: 'auto',
-      source_sweat_id: task.id,
-    })
-    result.detail.push({ source: 'sweat', title: task.title, landed, origin })
   }
 
   if (rows.length === 0) return result
@@ -117,9 +109,14 @@ export async function runSync(now: IsoDate = todayIso()): Promise<SyncResult> {
  * and one from the project view — is exactly how a todo and its backlog item
  * end up disagreeing about whether the work is done.
  *
- * Unchecking reverts a Sarkis-style status to 'Working on it' rather than
- * 'Haven't Started', because unchecking means it turned out not to be finished,
- * not that it was never begun.
+ * Unchecking reverts the status to 'Working on it' rather than 'Haven't
+ * Started', because unchecking means it turned out not to be finished, not that
+ * it was never begun.
+ *
+ * Completing does NOT archive the source item. Ticking a box in the week view
+ * should not make something vanish from the backlog board — that is the
+ * deletion habit the archive rule exists to replace. Archiving stays an
+ * explicit action from item detail.
  */
 export async function setTodoComplete(todoId: string, complete: boolean) {
   const db = createAdminClient()
@@ -145,10 +142,9 @@ export async function setTodoComplete(todoId: string, complete: boolean) {
   if (writeErr) throw writeErr
 
   if (todo.source_item_id) {
-    await db.from('items').update({
-      archived_at: stamp,
-      status: complete ? 'Done' : 'Working on it',
-    }).eq('id', todo.source_item_id)
+    await db.from('items')
+      .update({ status: complete ? 'Done' : 'Working on it' })
+      .eq('id', todo.source_item_id)
   }
 
   if (todo.source_sweat_id) {

@@ -19,16 +19,16 @@ import { Sheet } from '@/components/ui/primitives'
  */
 
 const PRIMARY = [
-  { href: '/', label: 'Today', icon: SunIcon },
+  { href: '/', label: 'Home', icon: HomeIcon },
+  { href: '/today', label: 'Today', icon: SunIcon },
   { href: '/projects', label: 'Projects', icon: StackIcon },
   { href: '/notes', label: 'Notes', icon: NoteIcon },
 ]
 
 const SECONDARY = [
-  { href: '/calendar', label: 'Calendar', hint: 'Everything by date' },
-  { href: '/week', label: 'Week', hint: 'The seven-day list' },
+  { href: '/calendar', label: 'Calendar', hint: 'Day, week and month' },
+  { href: '/list', label: 'Everything', hint: 'One flat list, filtered and sorted' },
   { href: '/people', label: 'People', hint: 'Who you are waiting on' },
-  { href: '/sweat', label: 'Sweat', hint: 'Course deadlines' },
 ]
 
 /** Surfaces that render without the shell. */
@@ -112,21 +112,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-line bg-surface/95 backdrop-blur md:hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
-        {PRIMARY.slice(0, 2).map(link => (
-          <NavTab key={link.href} {...link} active={isActive(link.href)} />
-        ))}
-
-        <button
-          onClick={() => setCaptureOpen(true)}
-          aria-label="Capture"
-          className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2"
-        >
-          <span className="grid h-9 w-9 place-items-center rounded-full bg-mine text-bg">
-            <PlusIcon />
-          </span>
-        </button>
-
-        {PRIMARY.slice(2).map(link => (
+        {PRIMARY.map(link => (
           <NavTab key={link.href} {...link} active={isActive(link.href)} />
         ))}
 
@@ -140,6 +126,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           More
         </button>
       </nav>
+
+      {/* Capture floats above the bar so all four primary tabs keep their slot
+          and the button still lands under the thumb. */}
+      <button
+        onClick={() => setCaptureOpen(true)}
+        aria-label="Capture"
+        className="fixed right-4 z-40 grid h-12 w-12 place-items-center rounded-full bg-mine text-bg shadow-lg md:hidden"
+        style={{ bottom: 'calc(66px + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <PlusIcon />
+      </button>
 
       <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="Go to">
         <div className="space-y-1">
@@ -197,6 +194,14 @@ function NavTab({
 }
 
 /* Icons are inline so the app pulls in no icon dependency. */
+
+function HomeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M3 10.5L12 4l9 6.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z" strokeLinejoin="round" />
+    </svg>
+  )
+}
 
 function SunIcon() {
   return (

@@ -244,7 +244,7 @@ export default function ItemPage({ params }: { params: Promise<{ id: string }> }
           {children.map(child => (
             <div key={child.id} className="flex items-center gap-1.5">
               <div className="flex-1 min-w-0">
-                <ItemRow item={child} href={`/items/${child.id}`} dense />
+                <ItemRow item={child} href={`/items/${child.id}`} />
               </div>
               <button
                 onClick={() => archive(child.id)}
