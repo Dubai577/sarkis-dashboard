@@ -75,7 +75,7 @@ console.log('\n── merges ──')
 for (const [category, project] of [['OCCM VT', 'OCCM Virginia Tech'], ['Convent', 'SMSD Convent']]) {
   const cat = categories.find(c => c.name === category)
   const root = roots.find(i => i.category_id === cat?.id)
-  const proj = projects.find(p => p.name === project)
+  const proj = projects.find(p => p.name.trim() === project)
   check(`${category} root merged with "${project}"`, root?.legacy_project_id === proj?.id, true)
 }
 

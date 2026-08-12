@@ -154,15 +154,27 @@ create index if not exists idx_items_planned    on items (planned_date) where pl
 create index if not exists idx_items_due        on items (due_date) where due_date is not null;
 create index if not exists idx_items_open       on items (parent_id) where archived_at is null;
 
+-- Defined here rather than relied on from migration 001. The schema on disk and
+-- the schema in the database have drifted before, so this file assumes nothing
+-- about what earlier migrations left behind. `create or replace` is harmless if
+-- 001's copy is already present — it is the same body.
+create or replace function public.update_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
 drop trigger if exists items_updated_at on items;
 create trigger items_updated_at
   before update on items
-  for each row execute function update_updated_at();
+  for each row execute function public.update_updated_at();
 
 drop trigger if exists people_updated_at on people;
 create trigger people_updated_at
   before update on people
-  for each row execute function update_updated_at();
+  for each row execute function public.update_updated_at();
 
 -- ----------------------------------------------------------------
 -- 4. Roots — one per category
@@ -221,13 +233,17 @@ on conflict (legacy_sarkis_id) do update
 -- ----------------------------------------------------------------
 
 -- 6a. Merge: attach the project id to the category root it duplicates.
+--
+-- Names are compared with btrim: 'SMSD Convent ' is stored with a trailing
+-- space, which silently defeated an exact match on the first run. The source
+-- row is left as-is — this migration does not write to projects.
 update items i
 set    legacy_project_id = p.id,
        updated_at = now()
 from   projects p
 join   categories c
-  on   (p.name = 'OCCM Virginia Tech' and c.name = 'OCCM VT')
-    or (p.name = 'SMSD Convent'       and c.name = 'Convent')
+  on   (btrim(p.name) = 'OCCM Virginia Tech' and c.name = 'OCCM VT')
+    or (btrim(p.name) = 'SMSD Convent'       and c.name = 'Convent')
 where  i.parent_id is null
   and  i.category_id = c.id
   and  i.legacy_project_id is null
@@ -235,7 +251,7 @@ where  i.parent_id is null
 
 -- 6b. The remaining projects become their own roots.
 insert into items (title, board, sort_order, legacy_project_id, created_at)
-select p.name, 'auto', 50, p.id, p.created_at
+select btrim(p.name), 'auto', 50, p.id, p.created_at
 from   projects p
 where  not exists (select 1 from items i where i.legacy_project_id = p.id)
 on conflict (legacy_project_id) do nothing;
@@ -263,7 +279,7 @@ create index if not exists idx_item_people_person on item_people (person_id);
 insert into item_people (item_id, person_id, relation)
 select i.id, pe.id, 'owner'
 from   items i
-join   projects pr on pr.id = i.legacy_project_id and pr.name = 'Jerome Projects'
+join   projects pr on pr.id = i.legacy_project_id and btrim(pr.name) = 'Jerome Projects'
 join   people   pe on lower(pe.name) like 'jerome%'
 on conflict do nothing;
 
