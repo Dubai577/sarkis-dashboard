@@ -82,3 +82,33 @@ the two schedules each November and March.
   project name and a `"directory": "."` that Vercel rejects; the working link is a
   `project.json` holding just `projectId` and `orgId`.
 - **`AUDIT.md`** — deliberately gitignored, because the repo is public.
+
+---
+
+## Rule — never delete by a LIKE pattern
+
+**Learned the hard way on 2026-08-12.** A cleanup step after an import test used
+
+```
+DELETE /rest/v1/items?title=like.*__rt__*
+```
+
+In SQL `LIKE`, `_` is a **single-character wildcard**. `__rt__` therefore means
+"any two characters, then `rt`, then any two characters" — which matched
+`Walmart Battery`, `Battery & Invertor`, and two archived Sarkis Fixes rows.
+Four real items were deleted.
+
+They were restored byte-for-byte from the dump taken minutes earlier, and a
+field-by-field comparison against `items.json` confirmed 100/100 rows with zero
+differences. Nothing was lost — because the restore point existed.
+
+Two rules from it:
+
+1. **Delete by explicit id**, captured from the insert response. Never by a
+   pattern, and never by a filter that was not first run as a SELECT and eyeballed.
+2. **Test markers must contain no `_` or `%`.** Use `zzprobe` style. Both are
+   wildcards in `LIKE`, and both silently widen the match.
+
+The reason this is worth a rule rather than a note: the delete returned success,
+the residue check returned zero, and the operation looked clean. Only a
+comparison against the dump revealed it.

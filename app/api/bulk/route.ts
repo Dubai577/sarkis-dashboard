@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { denyUnlessAdmin } from '@/lib/auth/guard'
 import { badRequest, isIsoDate, readJson, serverError } from '@/lib/api/http'
 import { today as todayIso } from '@/lib/dates'
+import { parseText, type TextNode } from '@/lib/textformat'
 
 const MAX_LINES = 200
 
@@ -14,16 +15,14 @@ const MAX_LINES = 200
  * of text and commits every line in one round trip, with the parent, category
  * and dates chosen once for the whole batch rather than per row.
  *
- * Indentation makes a line a child of the line above it, so a project and its
- * tasks can be pasted together:
+ * It reads the same format the exporter writes — see lib/textformat.ts — so a
+ * category file that came out of the app can be edited by hand and pasted back
+ * in without translation. Indentation nests; annotations after a pipe carry
+ * category, dates, person, priority, status and archived state.
  *
- *     convent service trip
- *       book the van
- *       confirm numbers with omena
- *
- * Everything is inserted in one statement. A batch either lands whole or not at
- * all, which matters when you are pasting thirty lines from a WhatsApp thread
- * and cannot tell which ones made it.
+ * Names that do not match an existing category or person are reported in the
+ * response rather than silently dropped, so a typo in a hand-edited file is
+ * visible instead of quietly losing a link.
  */
 export async function POST(req: NextRequest) {
   const denied = await denyUnlessAdmin()
@@ -50,61 +49,88 @@ export async function POST(req: NextRequest) {
   try {
     const db = createAdminClient()
 
-    // Parents first: an indented line needs its parent's id, which only exists
-    // after that row is written.
-    const roots: { title: string; children: string[] }[] = []
-    for (const raw of lines) {
-      const indented = /^[\s>\-*•]+\S/.test(raw) && /^(\s{2,}|\t|[-*•>]\s)/.test(raw)
-      const title = raw.replace(/^[\s>\-*•]+/, '').trim()
-      if (!title) continue
-      if (indented && roots.length > 0) roots[roots.length - 1].children.push(title)
-      else roots.push({ title, children: [] })
-    }
-
+    // The exporter writes this format and this parser reads it, so a file that
+    // came out of the app can be hand-edited and pasted straight back in.
+    const roots = parseText(text)
     if (roots.length === 0) return badRequest('Nothing to add.')
 
-    const base = {
-      category_id: categoryId,
-      waiting_on: waitingOn,
-      waiting_since: waitingOn ? todayIso() : null,
-      planned_date: plannedDate,
-    }
+    // Names resolve to ids once, so a whole paste costs two lookups.
+    const [{ data: cats }, { data: persons }] = await Promise.all([
+      db.from('categories').select('id,name'),
+      db.from('people').select('id,name'),
+    ])
+    const catByName = new Map((cats ?? []).map(c => [c.name.trim().toLowerCase(), c.id]))
+    const personByName = new Map((persons ?? []).map(p => [p.name.trim().toLowerCase(), p.id]))
 
-    const { data: created, error } = await db
-      .from('items')
-      .insert(roots.map((r, index) => ({ ...base, parent_id: parentId, title: r.title, sort_order: index })))
-      .select('id,title')
+    const unknownCategories = new Set<string>()
+    const unknownPeople = new Set<string>()
 
-    if (error) throw error
+    const rowFor = (node: TextNode, parent: string | null, order: number) => {
+      const category = node.category
+        ? catByName.get(node.category.trim().toLowerCase())
+        : undefined
+      if (node.category && !category) unknownCategories.add(node.category)
 
-    let childCount = 0
-    const childRows = roots.flatMap((r, index) =>
-      r.children.map((title, childIndex) => ({
-        ...base,
-        parent_id: created?.[index]?.id,
-        title,
-        sort_order: childIndex,
-      })),
-    ).filter(r => r.parent_id)
+      const person = node.waiting_on
+        ? personByName.get(node.waiting_on.trim().toLowerCase())
+        : undefined
+      if (node.waiting_on && !person) unknownPeople.add(node.waiting_on)
 
-    if (childRows.length > 0) {
-      const { data: kids, error: childErr } = await db.from('items').insert(childRows).select('id')
-      if (childErr) throw childErr
-      childCount = kids?.length ?? 0
-    }
-
-    if (waitingOn) {
-      const ids = (created ?? []).map(c => c.id)
-      if (ids.length) {
-        await db.from('item_people').upsert(
-          ids.map(id => ({ item_id: id, person_id: waitingOn, relation: 'waiting_on' })),
-          { onConflict: 'item_id,person_id,relation' },
-        )
+      return {
+        parent_id: parent,
+        title: node.title,
+        notes: node.notes ?? null,
+        category_id: category ?? categoryId,
+        planned_date: node.planned_date ?? plannedDate,
+        due_date: node.due_date ?? null,
+        priority: node.priority ?? null,
+        status: node.status ?? null,
+        board: node.board ?? 'auto',
+        nudge_after: node.nudge_after ?? 7,
+        waiting_on: person ?? waitingOn,
+        waiting_since: (person ?? waitingOn) ? todayIso() : null,
+        archived_at: node.archived ? new Date().toISOString() : null,
+        sort_order: order,
       }
     }
 
+    // One level at a time: a child needs its parent's id, which exists only
+    // after that row is written.
+    let created = 0
+    const writeLevel = async (nodes: TextNode[], parent: string | null): Promise<void> => {
+      if (nodes.length === 0) return
+      const { data, error } = await db
+        .from('items')
+        .insert(nodes.map((n, i) => rowFor(n, parent, i)))
+        .select('id')
+      if (error) throw error
+      created += data?.length ?? 0
+
+      // Anyone this item is waiting on is also linked, so a person page shows it.
+      const links = (data ?? []).flatMap((row, i) => {
+        const person = rowFor(nodes[i], parent, i).waiting_on
+        return person ? [{ item_id: row.id, person_id: person, relation: 'waiting_on' }] : []
+      })
+      if (links.length) {
+        await db.from('item_people').upsert(links, { onConflict: 'item_id,person_id,relation' })
+      }
+
+      for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i].children.length) await writeLevel(nodes[i].children, data![i].id)
+      }
+    }
+
+    await writeLevel(roots, parentId)
+
     return NextResponse.json(
-      { created: created?.length ?? 0, children: childCount, items: created ?? [] },
+      {
+        created,
+        roots: roots.length,
+        // Named but unmatched values are reported rather than silently dropped,
+        // so a typo in a hand-edited file is visible instead of losing a link.
+        unknownCategories: [...unknownCategories],
+        unknownPeople: [...unknownPeople],
+      },
       { status: 201 },
     )
   } catch (err) {
