@@ -42,7 +42,7 @@ if (!items) {
 }
 
 async function report(items) {
-const [categories, people, links, sarkis, projects, contributors, sweat] = await Promise.all([
+const [categories, people, links, sarkis, projects, contributors, sweat, school] = await Promise.all([
   get('categories?select=*'),
   get('people?select=*'),
   get('item_people?select=*'),
@@ -50,10 +50,17 @@ const [categories, people, links, sarkis, projects, contributors, sweat] = await
   get('projects?select=id,name'),
   get('contributors?select=id'),
   get('sweat_tasks?select=id,due_date,actual_due_date'),
+  // Migration 012 moved coursework into the tree, so the expected counts below
+  // are derived rather than hardcoded — otherwise a later migration makes this
+  // verifier report a failure that is really just its own staleness.
+  get('items?select=id&legacy_sweat_id=not.is.null'),
 ])
 
+const schoolMigrated = school?.length ?? 0
+const sarkisCategories = new Set(sarkis.map(s => s.category).filter(Boolean)).size
+
 console.log('\n── structures ──')
-check('categories', categories.length, 13)
+check('categories', categories.length, sarkisCategories + (schoolMigrated > 0 ? 1 : 0))
 check('  of which life-areas', categories.filter(c => c.is_area).length, 4)
 check('people', people.length, contributors.length)
 check('  linked to a contributor', people.filter(p => p.contributor_id).length, contributors.length)
@@ -62,7 +69,7 @@ console.log('\n── the tree ──')
 const roots = items.filter(i => !i.parent_id)
 const children = items.filter(i => i.parent_id)
 check('roots', roots.length >= 13, true)
-check('children', children.length, sarkis.length)
+check('children', children.length, sarkis.length + schoolMigrated)
 check('migrated from sarkis_tasks', items.filter(i => i.legacy_sarkis_id).length, sarkis.length)
 check('carrying a portal project id', items.filter(i => i.legacy_project_id).length, projects.length)
 
@@ -86,6 +93,17 @@ check('items in the category', fixes.length, 7)
 check('all archived', fixes.every(i => i.archived_at), true)
 check('still present in sarkis_tasks',
   sarkis.filter(s => s.category === 'Sarkis Fixes').length, 7)
+
+if (schoolMigrated > 0) {
+  console.log('\n── 012 school ──')
+  check('coursework migrated into items', schoolMigrated, sweat.length)
+  check('School category exists', !!categories.find(c => c.name === 'School'), true)
+  check('sweat_tasks left untouched', sweat.length, 2)
+  const courseRoots = items.filter(
+    i => !i.parent_id && i.category_id === categories.find(c => c.name === 'School')?.id,
+  )
+  check('a root per course', courseRoots.length > 0, true)
+}
 
 console.log('\n── backfills ──')
 check('sweat rows with actual_due_date',
