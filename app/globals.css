@@ -1,26 +1,152 @@
 @import "tailwindcss";
 
+/* ============================================================
+   Design tokens — the single source for colour, type and shape.
+   A design pass changes values here and the whole app follows.
+   Nothing below this block should hardcode a hex value.
+
+   The app is dark-only by choice: it is used one-handed, at night,
+   between commitments. A light theme is not a gap, it is a decision.
+
+   Palette is drawn from the subject — church metalwork and vestments:
+   brass for what is mine to act on, garnet for what has been dropped,
+   verdigris for done, slate for what is waiting on someone else.
+   Neutrals carry a warm red bias so they read as considered rather
+   than as default grey.
+   ============================================================ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* grounds */
+  --bg:          #121110;
+  --surface:     #1C1A18;
+  --surface-2:   #242120;
+  --surface-3:   #2E2A27;
+  --border:      #2E2A27;
+  --border-2:    #3D3835;
+
+  /* ink */
+  --text:        #F0EBE5;
+  --text-2:      #A79C92;
+  --text-3:      #6E645C;
+
+  /* semantic — possession and state */
+  --mine:        #D2A253;  /* brass    — I owe someone */
+  --mine-soft:   #3A2C15;
+  --theirs:      #8FB2D0;  /* slate    — waiting, correctly idle */
+  --theirs-soft: #1B2833;
+  --dropped:     #D97C7C;  /* garnet   — waited too long */
+  --dropped-soft:#3B1F1F;
+  --done:        #79BCA6;  /* verdigris*/
+  --done-soft:   #17302A;
+
+  /* heat emphasis */
+  --heat-critical: #D97C7C;
+  --heat-warm:     #D2A253;
+  --heat-steady:   #8FB2D0;
+  --heat-quiet:    #6E645C;
+
+  /* shape */
+  --r-sm: 6px;
+  --r:    10px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+
+  /* the one place tap-target size is decided */
+  --tap: 44px;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg:         var(--bg);
+  --color-surface:    var(--surface);
+  --color-surface-2:  var(--surface-2);
+  --color-surface-3:  var(--surface-3);
+  --color-line:       var(--border);
+  --color-line-2:     var(--border-2);
+
+  --color-ink:        var(--text);
+  --color-ink-2:      var(--text-2);
+  --color-ink-3:      var(--text-3);
+
+  --color-mine:       var(--mine);
+  --color-mine-soft:  var(--mine-soft);
+  --color-theirs:     var(--theirs);
+  --color-theirs-soft:var(--theirs-soft);
+  --color-dropped:    var(--dropped);
+  --color-dropped-soft:var(--dropped-soft);
+  --color-done:       var(--done);
+  --color-done-soft:  var(--done-soft);
+
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  -webkit-text-size-adjust: 100%;
+  background: var(--bg);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Room for the fixed bottom bar plus the iOS home indicator. */
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  overscroll-behavior-y: none;
 }
+
+@media (min-width: 768px) {
+  body { padding-bottom: 0; }
+}
+
+/* Numerals line up in columns wherever they are compared. */
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* One-line clamp for titles. Median title is 15 characters; the longest is
+   473, and a row must survive both without changing height. */
+.clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Horizontal scrollers should not show a bar on desktop but must still scroll. */
+.no-bar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-bar::-webkit-scrollbar { display: none; }
+
+:focus-visible {
+  outline: 2px solid var(--mine);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Bottom sheets slide up; respected by the reduced-motion rule above. */
+@keyframes sheet-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.sheet-in { animation: sheet-in 160ms ease-out; }
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.fade-in { animation: fade-in 120ms ease-out; }
