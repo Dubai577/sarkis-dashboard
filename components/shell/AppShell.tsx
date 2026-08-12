@@ -20,13 +20,13 @@ import { Sheet } from '@/components/ui/primitives'
 
 const PRIMARY = [
   { href: '/', label: 'Home', icon: HomeIcon },
-  { href: '/today', label: 'Today', icon: SunIcon },
+  { href: '/calendar', label: 'Calendar', icon: CalendarIcon },
   { href: '/projects', label: 'Projects', icon: StackIcon },
   { href: '/notes', label: 'Notes', icon: NoteIcon },
 ]
 
 const SECONDARY = [
-  { href: '/calendar', label: 'Calendar', hint: 'Day, week and month' },
+  { href: '/today', label: 'Today', hint: 'The full day, with late and dropped' },
   { href: '/list', label: 'Everything', hint: 'One flat list, filtered and sorted' },
   { href: '/bulk', label: 'Bulk add', hint: 'Paste a list, one per line' },
   { href: '/people', label: 'People', hint: 'Who you are waiting on' },
@@ -196,18 +196,19 @@ function NavTab({
 
 /* Icons are inline so the app pulls in no icon dependency. */
 
-function HomeIcon() {
+function CalendarIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M3 10.5L12 4l9 6.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z" strokeLinejoin="round" />
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18M8 3v4M16 3v4" strokeLinecap="round" />
     </svg>
   )
 }
 
-function SunIcon() {
+function HomeIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" strokeLinecap="round" />
+      <path d="M3 10.5L12 4l9 6.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z" strokeLinejoin="round" />
     </svg>
   )
 }

@@ -48,8 +48,11 @@ export async function GET() {
       loadItemViews({ now }),
     ])
 
-    const overdueRes = await db.from('todos').select('id')
-      .lt('week_start', start).eq('is_complete', false)
+    const [overdueRes, { data: catRows }, { data: peopleRows }] = await Promise.all([
+      db.from('todos').select('id').lt('week_start', start).eq('is_complete', false),
+      db.from('categories').select('id,name,color').order('sort_order'),
+      db.from('people').select('id,name').order('name'),
+    ])
 
     // ── week strip ──
     const weekRows = weekRes.data ?? []
@@ -64,6 +67,15 @@ export async function GET() {
       }
     })
 
+    // ── project rows, for the expanded view ──
+    const projectChildren = new Map<string, { id: string; title: string; possession: string }[]>()
+    for (const i of items) {
+      if (!i.parent_id) continue
+      const list = projectChildren.get(i.parent_id) ?? []
+      if (list.length < 6) list.push({ id: i.id, title: i.title, possession: i.possession })
+      projectChildren.set(i.parent_id, list)
+    }
+
     // ── projects, compact ──
     const projects = boardItems(items)
       .map(p => ({
@@ -76,8 +88,45 @@ export async function GET() {
         possession: p.possession,
         heat: p.heat,
         isSchool: p.category?.name === 'School',
+        category_id: p.category_id,
+        waiting_person: p.waiting_person,
+        children: projectChildren.get(p.id) ?? [],
       }))
       .sort((a, b) => b.heat - a.heat)
+
+    // ── the two states nothing else surfaces ──
+    const dropped = items
+      .filter(i => i.possession === 'dropped')
+      .sort((a, b) => b.heat - a.heat)
+      .map(i => ({
+        id: i.id, title: i.title,
+        category: i.category ? { name: i.category.name, color: i.category.color } : null,
+        waiting_person: i.waiting_person,
+        waiting_since: i.waiting_since,
+        nudge_after: i.nudge_after,
+        possession: i.possession,
+        waiting_on: i.waiting_on,
+      }))
+
+    // ── who I am waiting on, grouped by person ──
+    const waitingByPerson = new Map<string, { id: string; name: string; items: { id: string; title: string; days: number | null; dropped: boolean }[] }>()
+    for (const i of items) {
+      if (!i.waiting_on || !i.waiting_person) continue
+      const entry = waitingByPerson.get(i.waiting_on)
+        ?? { id: i.waiting_person.id, name: i.waiting_person.name, items: [] }
+      entry.items.push({
+        id: i.id,
+        title: i.title,
+        days: i.waiting_since
+          ? Math.round((Date.parse(`${now}T12:00:00Z`) - Date.parse(`${i.waiting_since}T12:00:00Z`)) / 86400000)
+          : null,
+        dropped: i.possession === 'dropped',
+      })
+      waitingByPerson.set(i.waiting_on, entry)
+    }
+    const waiting = [...waitingByPerson.values()]
+      .sort((a, b) => Number(b.items.some(x => x.dropped)) - Number(a.items.some(x => x.dropped))
+        || b.items.length - a.items.length)
 
     // ── school: deadlines behave differently, so they get their own panel ──
     const school = items
@@ -133,6 +182,10 @@ export async function GET() {
       projects,
       school,
       notes: notesRes.data ?? [],
+      dropped,
+      waiting,
+      categories: catRows ?? [],
+      people: peopleRows ?? [],
       routines: {
         total: (routinesRes.data ?? []).length,
         done: done.size,
