@@ -49,7 +49,7 @@ const [categories, people, links, sarkis, projects, contributors, sweat, school]
   get('sarkis_tasks?select=id,category,subcategory'),
   get('projects?select=id,name'),
   get('contributors?select=id'),
-  get('sweat_tasks?select=id,due_date,actual_due_date'),
+  get('sweat_tasks?select=id,course,due_date,actual_due_date'),
   // Migration 012 moved coursework into the tree, so the expected counts below
   // are derived rather than hardcoded — otherwise a later migration makes this
   // verifier report a failure that is really just its own staleness.
@@ -96,9 +96,12 @@ check('still present in sarkis_tasks',
 
 if (schoolMigrated > 0) {
   console.log('\n── 012 school ──')
-  check('coursework migrated into items', schoolMigrated, sweat.length)
+  // The 'tmw!!' placeholder was removed in 013 and is deliberately not migrated.
+  const realCoursework = sweat.filter(s => (s.course ?? '').trim().toLowerCase() !== 'tmw!!')
+  check('coursework migrated into items', schoolMigrated, realCoursework.length)
   check('School category exists', !!categories.find(c => c.name === 'School'), true)
   check('sweat_tasks left untouched', sweat.length, 2)
+  check('placeholder not in the tree', schoolMigrated, sweat.length - 1)
   const courseRoots = items.filter(
     i => !i.parent_id && i.category_id === categories.find(c => c.name === 'School')?.id,
   )

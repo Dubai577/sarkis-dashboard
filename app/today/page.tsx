@@ -1,10 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { ItemRow, TodoRow, type RowTodo } from '@/components/rows'
 import { Button, EmptyState, ErrorBanner, Sheet, Spinner, inputClass } from '@/components/ui/primitives'
 import { addDays, longLabel, mediumLabel, today as todayIso } from '@/lib/dates'
+import { FilterBar, readFilters } from '@/components/FilterBar'
 
 interface TodayPayload {
   date: string
@@ -28,8 +30,12 @@ interface TodayPayload {
  * count. The screen answers "what am I doing now", and a wall of things not
  * done in June actively prevents it from answering that.
  */
-export default function TodayPage() {
+function TodayView() {
+  const params = useSearchParams()
+  const filters = readFilters(new URLSearchParams(params.toString()))
+
   const [data, setData] = useState<TodayPayload | null>(null)
+  const [categories, setCategories] = useState<{ id: string; name: string; color: string }[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [showLate, setShowLate] = useState(false)
@@ -53,6 +59,11 @@ export default function TodayPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    fetch('/api/categories').then(r => r.ok ? r.json() : null).then(d => d && setCategories(d.categories)).catch(() => {})
+  }, [])
+
   useEffect(() => {
     const onCapture = () => load()
     window.addEventListener('merc:captured', onCapture)
@@ -99,12 +110,21 @@ export default function TodayPage() {
     } catch { setError('Could not move that.') }
   }
 
+  /** Search narrows the day; the state filters apply to the dropped list. */
+  const match = useMemo(() => {
+    const q = filters.q.trim().toLowerCase()
+    return (title: string) => !q || title.toLowerCase().includes(q)
+  }, [filters.q])
+
   if (loading) return <Spinner label="Loading today" />
 
-  const open = data?.todos.filter(t => !t.is_complete) ?? []
-  const done = data?.todos.filter(t => t.is_complete) ?? []
-  const late = data?.overdue ?? []
-  const dropped = data?.dropped ?? []
+  const open = (data?.todos ?? []).filter(t => !t.is_complete && match(t.title))
+  const done = (data?.todos ?? []).filter(t => t.is_complete && match(t.title))
+  const late = (data?.overdue ?? []).filter(t => match(t.title))
+  const dropped = (data?.dropped ?? [])
+    .filter(d => match(d.title))
+    .filter(d => !filters.possession || filters.possession === 'dropped')
+    .filter(d => !filters.categories.length || filters.categories.includes(d.category?.name ?? ''))
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-4">
@@ -115,6 +135,14 @@ export default function TodayPage() {
           <span className="ml-auto text-[11px] tnum text-ink-3">{done.length}/{data?.todos.length} done</span>
         )}
       </header>
+
+      <FilterBar
+        state={filters}
+        categories={categories}
+        people={[]}
+        total={(data?.todos.length ?? 0) + (data?.overdue.length ?? 0) + (data?.dropped.length ?? 0)}
+        shown={open.length + done.length + late.length + dropped.length}
+      />
 
       {error && <div className="mb-3"><ErrorBanner message={error} onRetry={load} /></div>}
 
@@ -288,5 +316,13 @@ function Collapsed({
       </button>
       {isOpen && <div className="mt-1">{children}</div>}
     </section>
+  )
+}
+
+export default function TodayPage() {
+  return (
+    <Suspense fallback={<Spinner label="Loading today" />}>
+      <TodayView />
+    </Suspense>
   )
 }

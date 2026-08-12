@@ -52,6 +52,7 @@ select distinct
        60
 from   sweat_tasks s
 where  btrim(coalesce(s.course, '')) <> ''
+  and  btrim(lower(s.course)) <> 'tmw!!'   -- placeholder, removed in 013
   and  not exists (
          select 1 from items i
          where  i.parent_id is null
@@ -84,6 +85,7 @@ left join  items course
       and  lower(btrim(course.title)) = lower(btrim(s.course))
       and  course.category_id = (select id from categories where name = 'School')
 where      course.id is not null
+  and      btrim(lower(s.course)) <> 'tmw!!'   -- placeholder, removed in 013
 on conflict (legacy_sweat_id) do update
   set title        = excluded.title,
       planned_date = excluded.planned_date,
@@ -96,10 +98,12 @@ commit;
 -- Verify
 -- ----------------------------------------------------------------
 
--- Every sweat row has exactly one item. Expect 0.
+-- Every real sweat row has exactly one item. Expect 0.
+-- The 'tmw!!' placeholder is excluded on purpose; see 013.
 select count(*) as not_migrated
 from   sweat_tasks s
-where  not exists (select 1 from items i where i.legacy_sweat_id = s.id);
+where  btrim(lower(s.course)) <> 'tmw!!'
+  and  not exists (select 1 from items i where i.legacy_sweat_id = s.id);
 
 -- Course roots and their assignment counts.
 select i.title as course,

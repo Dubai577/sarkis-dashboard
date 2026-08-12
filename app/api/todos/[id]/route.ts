@@ -7,6 +7,9 @@ import { badRequest, isIsoDate, pick, readJson, serverError, validateScalars } f
 const WRITABLE = [
   'title', 'task_date', 'category',
   'start_time', 'end_time', 'is_complete', 'sort_order',
+  // Choosing a day by hand is what makes placement 'manual'; without it here
+  // the flag was silently dropped and rollover would walk a deliberate date.
+  'placement', 'origin_date',
 ] as const
 
 export async function PATCH(

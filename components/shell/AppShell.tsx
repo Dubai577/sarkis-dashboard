@@ -28,6 +28,7 @@ const PRIMARY = [
 const SECONDARY = [
   { href: '/calendar', label: 'Calendar', hint: 'Day, week and month' },
   { href: '/list', label: 'Everything', hint: 'One flat list, filtered and sorted' },
+  { href: '/bulk', label: 'Bulk add', hint: 'Paste a list, one per line' },
   { href: '/people', label: 'People', hint: 'Who you are waiting on' },
 ]
 

@@ -1,10 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { PossessionGlyph, PossessionLegend } from '@/components/ui/Possession'
 import { EmptyState, ErrorBanner, Spinner } from '@/components/ui/primitives'
-import { mediumLabel } from '@/lib/dates'
+import { mediumLabel, today as todayIso } from '@/lib/dates'
+import { FilterBar, readFilters } from '@/components/FilterBar'
 
 interface Project {
   id: string
@@ -18,8 +20,11 @@ interface Project {
   planned_date: string | null
   due_date: string | null
   updated_at: string
+  created_at: string
+  waiting_on: string | null
   category: { id: string; name: string; color: string; is_area: boolean } | null
   waiting_person: { id: string; name: string } | null
+  people: { id: string; name: string }[]
 }
 
 interface BoardPayload { projects: Project[]; areas: Project[] }
@@ -36,8 +41,13 @@ interface BoardPayload { projects: Project[]; areas: Project[] }
  * percentage would be measuring a number that never moves. What is shown
  * instead is possession balance and whether anything has moved lately.
  */
-export default function ProjectsPage() {
+function ProjectsView() {
+  const params = useSearchParams()
+  const filters = readFilters(new URLSearchParams(params.toString()))
+
   const [data, setData] = useState<BoardPayload | null>(null)
+  const [categories, setCategories] = useState<{ id: string; name: string; color: string }[]>([])
+  const [people, setPeople] = useState<{ id: string; name: string }[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [showAreas, setShowAreas] = useState(false)
@@ -58,11 +68,52 @@ export default function ProjectsPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    fetch('/api/categories').then(r => r.ok ? r.json() : null).then(d => d && setCategories(d.categories)).catch(() => {})
+    fetch('/api/people').then(r => r.ok ? r.json() : null).then(d => d && setPeople(d.people)).catch(() => {})
+  }, [])
+
   useEffect(() => {
     const onCapture = () => load()
     window.addEventListener('merc:captured', onCapture)
     return () => window.removeEventListener('merc:captured', onCapture)
   }, [load])
+
+  const shown = useMemo(() => {
+    const list = data?.projects ?? []
+    const q = filters.q.trim().toLowerCase()
+    const filtered = list.filter(p => {
+      if (q && !p.title.toLowerCase().includes(q)) return false
+      if (filters.categories.length && !filters.categories.includes(p.category?.name ?? '')) return false
+      if (filters.possession && p.possession !== filters.possession) return false
+      if (filters.person) {
+        const linked = p.waiting_on === filters.person ||
+          (p.people ?? []).some((x: { id: string }) => x.id === filters.person)
+        if (!linked) return false
+      }
+      const date = p.due_date ?? p.planned_date
+      if (filters.dates === 'has' && !date) return false
+      if (filters.dates === 'none' && date) return false
+      if (filters.dates === 'overdue' && !(date && date < todayIso())) return false
+      return true
+    })
+
+    const sorted = [...filtered]
+    switch (filters.sort) {
+      case 'due':
+        sorted.sort((a, b) => (a.due_date ?? a.planned_date ?? '9999').localeCompare(b.due_date ?? b.planned_date ?? '9999')); break
+      case 'category':
+        sorted.sort((a, b) => (a.category?.name ?? 'zzz').localeCompare(b.category?.name ?? 'zzz')); break
+      case 'alpha':
+        sorted.sort((a, b) => a.title.localeCompare(b.title)); break
+      case 'added':
+        sorted.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')); break
+      default:
+        sorted.sort((a, b) => b.heat - a.heat || a.title.localeCompare(b.title))
+    }
+    return sorted
+  }, [data, filters])
 
   if (loading) return <Spinner label="Loading projects" />
 
@@ -70,12 +121,17 @@ export default function ProjectsPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-5">
-      <header className="mb-4">
-        <h1 className="text-2xl font-semibold">Projects</h1>
-        <p className="text-sm text-ink-2">
-          {data?.projects.length ?? 0} live · ordered by what needs you
-        </p>
+      <header className="mb-2">
+        <h1 className="text-xl font-semibold">Projects</h1>
       </header>
+
+      <FilterBar
+        state={filters}
+        categories={categories}
+        people={people}
+        total={data?.projects.length ?? 0}
+        shown={shown.length}
+      />
 
       <PossessionLegend className="mb-4 px-0.5" />
 
@@ -89,7 +145,7 @@ export default function ProjectsPage() {
       )}
 
       <div className="grid gap-2 sm:grid-cols-2">
-        {data?.projects.map(project => (
+        {shown.map(project => (
           <ProjectCard key={project.id} project={project} />
         ))}
       </div>
@@ -174,4 +230,12 @@ function ProjectCard({ project }: { project: Project }) {
 
 function daysSince(iso: string): number {
   return Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 86_400_000))
+}
+
+export default function ProjectsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProjectsView />
+    </Suspense>
+  )
 }

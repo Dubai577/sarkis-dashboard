@@ -11,6 +11,9 @@ import { isMonday } from '@/lib/dates'
 const WRITABLE = [
   'title', 'task_date', 'category',
   'start_time', 'end_time', 'is_complete', 'sort_order',
+  // Choosing a day by hand is what makes placement 'manual'; without it here
+  // the flag was silently dropped and rollover would walk a deliberate date.
+  'placement', 'origin_date',
 ] as const
 
 /** GET /api/todos?week=YYYY-MM-DD → { todos, overdue } */
@@ -58,6 +61,13 @@ export async function POST(req: NextRequest) {
     return badRequest('task_date must be a YYYY-MM-DD date.')
   }
   insert.title = insert.title.trim()
+
+  if (insert.placement && !['auto','manual'].includes(insert.placement as string)) {
+    return badRequest('placement must be auto or manual.')
+  }
+  // A task typed straight onto a date was chosen deliberately.
+  if (!insert.placement) insert.placement = 'manual'
+  if (!insert.origin_date) insert.origin_date = insert.task_date
 
   try {
     const db = createAdminClient()

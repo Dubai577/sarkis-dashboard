@@ -1,59 +1,78 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { denyUnlessAdmin } from '@/lib/auth/guard'
-import { badRequest, serverError } from '@/lib/api/http'
-import { addDays, today as todayIso } from '@/lib/dates'
+import { badRequest, isIsoDate, serverError } from '@/lib/api/http'
+import { addDays, today as todayIso, weekStart } from '@/lib/dates'
+import { runSync } from '@/lib/db/sync'
+import { possessionOf } from '@/lib/possession'
 
 /**
- * GET /api/calendar?month=YYYY-MM
+ * GET /api/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD
  *
- * The calendar is a second projection of the same rows the week view reads.
- * There is no calendar store and nothing to keep in sync. Items and Sweat come
- * along so planned dates and deadlines are visible, each tagged by kind so the
- * grid can render them distinctly.
+ * One range endpoint behind all three views. Day, week and month differ only in
+ * the range they ask for, which is what lets them switch without losing
+ * position and guarantees they can never disagree about what is on a date.
+ *
+ * There is no calendar store: this is a second projection of the same todos the
+ * week list reads, plus items carrying their own dates.
  */
 export async function GET(req: NextRequest) {
   const denied = await denyUnlessAdmin()
   if (denied) return denied
 
-  const month = req.nextUrl.searchParams.get('month') ?? todayIso().slice(0, 7)
-  if (!/^\d{4}-\d{2}$/.test(month)) return badRequest('month must be YYYY-MM.')
+  const params = req.nextUrl.searchParams
+  const now = todayIso()
 
-  // Pad either side so the leading and trailing cells of the grid, which
-  // belong to neighbouring months, are populated too.
-  const first = month + '-01'
-  const from = addDays(first, -7)
-  const to = addDays(first, 44)
+  // `month=YYYY-MM` is still accepted so older links keep working.
+  const month = params.get('month')
+  let from = params.get('from')
+  let to = params.get('to')
+
+  if (month) {
+    if (!/^\d{4}-\d{2}$/.test(month)) return badRequest('month must be YYYY-MM.')
+    from = addDays(`${month}-01`, -7)
+    to = addDays(`${month}-01`, 44)
+  }
+
+  if (!isIsoDate(from) || !isIsoDate(to)) {
+    return badRequest('from and to must be YYYY-MM-DD dates.')
+  }
+  if (from > to) return badRequest('from must be on or before to.')
 
   try {
+    // Materializing is safe to repeat and populates a future range the first
+    // time it is opened. Rollover is deliberately not run here — it may only
+    // ever touch the current week.
+    await runSync(now)
+
     const db = createAdminClient()
 
-    const [todosRes, itemsRes, sweatRes, catRes] = await Promise.all([
+    const [todosRes, itemsRes, catRes] = await Promise.all([
       db.from('todos').select('*')
         .gte('task_date', from).lte('task_date', to)
         .order('task_date').order('sort_order'),
       db.from('items')
         .select('id,title,planned_date,due_date,category_id,waiting_on,waiting_since,nudge_after')
         .is('archived_at', null)
-        .not('planned_date', 'is', null)
-        .gte('planned_date', from).lte('planned_date', to),
-      db.from('sweat_tasks')
-        .select('id,title,course,my_due_date,actual_due_date,is_complete')
-        .not('my_due_date', 'is', null)
-        .gte('my_due_date', from).lte('my_due_date', to),
+        .or(`and(planned_date.gte.${from},planned_date.lte.${to}),and(due_date.gte.${from},due_date.lte.${to})`),
       db.from('categories').select('id,name,color'),
     ])
 
     if (todosRes.error) throw todosRes.error
+    if (itemsRes.error) throw itemsRes.error
+
+    const items = (itemsRes.data ?? []).map(i => ({
+      ...i,
+      possession: possessionOf(i, now),
+    }))
 
     return NextResponse.json({
-      month,
       from,
       to,
-      today: todayIso(),
+      today: now,
+      currentWeek: weekStart(now),
       todos: todosRes.data ?? [],
-      items: itemsRes.data ?? [],
-      sweat: sweatRes.data ?? [],
+      items,
       categories: catRes.data ?? [],
     })
   } catch (err) {
