@@ -87,7 +87,7 @@ export default async function ProjectDetail({ params }: { params: Promise<{ id: 
 
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
-          <Link href="/projects" className="hover:text-gray-600 transition-colors">Projects</Link>
+          <Link href="/manage" className="hover:text-gray-600 transition-colors">Projects</Link>
           <span>/</span>
           <span className="text-gray-700 font-medium">{project.name}</span>
         </div>
@@ -116,14 +116,14 @@ export default async function ProjectDetail({ params }: { params: Promise<{ id: 
                 </span>
               )}
               <Link
-                href={`/projects/${id}/dashboard`}
+                href={`/manage/${id}/dashboard`}
                 className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-200
                            px-3 py-1.5 rounded-full hover:bg-indigo-100 transition-colors font-medium"
               >
                 📊 Dashboard
               </Link>
               <Link
-                href={`/projects/${id}/edit`}
+                href={`/manage/${id}/edit`}
                 className="text-xs text-gray-500 bg-white border border-gray-200
                            px-3 py-1.5 rounded-full hover:bg-gray-50 transition-colors"
               >
@@ -153,7 +153,7 @@ export default async function ProjectDetail({ params }: { params: Promise<{ id: 
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-sm font-semibold text-gray-700">Tasks</h2>
               <Link
-                href={`/projects/${id}/tasks/new`}
+                href={`/manage/${id}/tasks/new`}
                 className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
               >
                 + Add task
@@ -163,7 +163,7 @@ export default async function ProjectDetail({ params }: { params: Promise<{ id: 
             {tasks && tasks.length > 0 ? tasks.map((task: any) => (
               <Link
                 key={task.id}
-                href={`/projects/${id}/tasks/${task.id}`}
+                href={`/manage/${id}/tasks/${task.id}`}
                 className="block bg-white rounded-xl border border-gray-200 p-4
                            hover:border-gray-300 hover:shadow-sm transition-all"
               >
@@ -204,7 +204,7 @@ export default async function ProjectDetail({ params }: { params: Promise<{ id: 
               <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
                 <p className="text-sm text-gray-400">No tasks yet.</p>
                 <Link
-                  href={`/projects/${id}/tasks/new`}
+                  href={`/manage/${id}/tasks/new`}
                   className="mt-2 inline-block text-sm text-indigo-600 font-medium hover:underline"
                 >
                   Add the first task →
@@ -236,7 +236,7 @@ export default async function ProjectDetail({ params }: { params: Promise<{ id: 
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700">Notes</h3>
                 <Link
-                  href={`/projects/${id}/notes/new`}
+                  href={`/manage/${id}/notes/new`}
                   className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
                 >
                   + Add

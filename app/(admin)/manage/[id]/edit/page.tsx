@@ -20,11 +20,11 @@ export default async function EditProjectPage({ params }: { params: Promise<{ id
       <div className="max-w-xl mx-auto px-6 py-8">
 
         <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
-          <Link href="/projects" className="hover:text-gray-600 transition-colors">
+          <Link href="/manage" className="hover:text-gray-600 transition-colors">
             Projects
           </Link>
           <span>/</span>
-          <Link href={`/projects/${id}`}
+          <Link href={`/manage/${id}`}
                 className="hover:text-gray-600 transition-colors truncate max-w-[160px]">
             {project.name}
           </Link>

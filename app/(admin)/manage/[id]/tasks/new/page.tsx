@@ -13,9 +13,9 @@ export default async function NewTaskPage({ params }: { params: Promise<{ id: st
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-xl mx-auto px-6 py-8">
         <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
-          <Link href="/projects" className="hover:text-gray-600">Projects</Link>
+          <Link href="/manage" className="hover:text-gray-600">Projects</Link>
           <span>/</span>
-          <Link href={`/projects/${id}`} className="hover:text-gray-600">{project.name}</Link>
+          <Link href={`/manage/${id}`} className="hover:text-gray-600">{project.name}</Link>
           <span>/</span>
           <span className="text-gray-700 font-medium">New task</span>
         </div>
@@ -61,7 +61,7 @@ export default async function NewTaskPage({ params }: { params: Promise<{ id: st
             </div>
 
             <div className="flex justify-between items-center pt-2">
-              <Link href={`/projects/${id}`} className="text-sm text-gray-400 hover:text-gray-600">
+              <Link href={`/manage/${id}`} className="text-sm text-gray-400 hover:text-gray-600">
                 Cancel
               </Link>
               <button

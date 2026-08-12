@@ -31,8 +31,8 @@ export async function createContributor(formData: FormData) {
 
   if (error) throw new Error(error.message)
 
-  revalidatePath('/projects/contributors')
-  redirect('/projects/contributors')
+  revalidatePath('/manage/contributors')
+  redirect('/manage/contributors')
 }
 
 export async function updateContributor(id: string, formData: FormData) {
@@ -50,8 +50,8 @@ export async function updateContributor(id: string, formData: FormData) {
 
   if (error) throw new Error(error.message)
 
-  revalidatePath('/projects/contributors')
-  redirect('/projects/contributors')
+  revalidatePath('/manage/contributors')
+  redirect('/manage/contributors')
 }
 
 export async function deleteContributor(id: string) {
@@ -60,8 +60,8 @@ export async function deleteContributor(id: string) {
   const db = createAdminClient()
   const { error } = await db.from('contributors').delete().eq('id', id)
   if (error) throw new Error(error.message)
-  revalidatePath('/projects/contributors')
-  redirect('/projects/contributors')
+  revalidatePath('/manage/contributors')
+  redirect('/manage/contributors')
 }
 
 export async function resetPIN(id: string) {
@@ -76,7 +76,7 @@ export async function resetPIN(id: string) {
   }).eq('id', id)
 
   if (error) throw new Error(error.message)
-  revalidatePath('/projects/contributors')
+  revalidatePath('/manage/contributors')
 }
 
 export async function assignContributorToProject(
@@ -104,5 +104,5 @@ export async function assignContributorToProject(
       .upsert(assignments, { onConflict: 'task_id,contributor_id', ignoreDuplicates: true })
   }
 
-  revalidatePath(`/projects/${projectId}`)
+  revalidatePath(`/manage/${projectId}`)
 }

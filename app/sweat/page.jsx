@@ -1,263 +1,237 @@
 'use client'
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
+
+import { useCallback, useEffect, useState } from 'react'
+import { SlackBar } from '@/app/calendar/page'
+import {
+  Button, Check, EmptyState, ErrorBanner, Field, Sheet, Spinner, inputClass,
+} from '@/components/ui/primitives'
+import { today as todayIso } from '@/lib/dates'
+
+/**
+ * Sweat — coursework, on the two-date model.
+ *
+ *   my due date      when I intend to finish
+ *   actual due date  the professor's real deadline
+ *
+ * The gap between them is the whole feature, so the list is grouped by course
+ * and each row draws its slack rather than printing two dates and leaving the
+ * subtraction to the reader.
+ *
+ * Built for a full September load, not the two rows currently present — it is
+ * August and the semester has not started.
+ */
+
+const TYPES = ['HW', 'Exam', 'Lab', 'Project', 'Other']
 
 async function api(path, options) {
   const res = await fetch(path, {
     ...options,
     headers: options?.body ? { 'Content-Type': 'application/json' } : undefined,
   })
-  if (res.status === 401) {
-    window.location.href = '/login?next=/sweat'
-    throw new Error('Session expired.')
-  }
+  if (res.status === 401) { window.location.href = '/login?next=/sweat'; throw new Error('Session expired.') }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Request failed.')
   return data
-}
-
-const ASSIGNMENT_TYPES = ['HW', 'Exam', 'Lab', 'Project', 'Other']
-
-function daysUntil(dateStr) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const due = new Date(dateStr + 'T00:00:00')
-  return Math.round((due - today) / (1000 * 60 * 60 * 24))
-}
-
-function urgencyStyle(days) {
-  if (days < 0) return 'border-l-4 border-gray-600 opacity-50'
-  if (days <= 1) return 'border-l-4 border-red-500'
-  if (days <= 3) return 'border-l-4 border-yellow-500'
-  if (days <= 7) return 'border-l-4 border-blue-500'
-  return 'border-l-4 border-gray-600'
-}
-
-function urgencyLabel(days) {
-  if (days < 0) return `${Math.abs(days)}d overdue`
-  if (days === 0) return 'Due today'
-  if (days === 1) return 'Due tomorrow'
-  return `${days}d left`
-}
-
-function urgencyColor(days) {
-  if (days < 0) return 'text-gray-500'
-  if (days <= 1) return 'text-red-400'
-  if (days <= 3) return 'text-yellow-400'
-  return 'text-gray-400'
 }
 
 export default function SweatPage() {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showForm, setShowForm] = useState(false)
-  const [hideComplete, setHideComplete] = useState(true)
-  const [editTask, setEditTask] = useState(null)
-  const [newTask, setNewTask] = useState({
-    course: '', title: '', my_due_date: '', actual_due_date: '',
-    assignment_type: 'HW', start_time: '', end_time: ''
-  })
+  const [hideDone, setHideDone] = useState(true)
+  const [editing, setEditing] = useState(null)
+  const [adding, setAdding] = useState(false)
 
-  useEffect(() => { fetchTasks() }, [])
-
-  async function fetchTasks() {
+  const load = useCallback(async () => {
     try {
-      const { tasks: rows } = await api('/api/sweat')
-      setTasks(rows)
+      const { tasks } = await api('/api/sweat')
+      setTasks(tasks)
       setError('')
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function toggle(task) {
+    const next = !task.is_complete
+    setTasks(tasks.map(t => (t.id === task.id ? { ...t, is_complete: next } : t)))
+    try {
+      await api(`/api/sweat/${task.id}`, { method: 'PATCH', body: JSON.stringify({ is_complete: next }) })
+    } catch (e) {
+      setError(e.message)
+      load()
+    }
   }
 
-  async function addTask() {
-    if (!newTask.title.trim() || !newTask.course.trim()) return
+  async function save(body, id) {
     try {
-      const { task } = await api('/api/sweat', {
-        method: 'POST',
-        body: JSON.stringify(newTask),
-      })
-      setTasks([...tasks, task].sort((a, b) => new Date(a.actual_due_date || a.my_due_date) - new Date(b.actual_due_date || b.my_due_date)))
-      setNewTask({ course: '', title: '', my_due_date: '', actual_due_date: '', assignment_type: 'HW', start_time: '', end_time: '' })
-      setShowForm(false)
-      setError('')
+      if (id) await api(`/api/sweat/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+      else await api('/api/sweat', { method: 'POST', body: JSON.stringify(body) })
+      setEditing(null)
+      setAdding(false)
+      load()
     } catch (e) {
       setError(e.message)
     }
   }
 
-  async function saveEdit() {
-    if (!editTask) return
-    try {
-      const { task } = await api(`/api/sweat/${editTask.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(editTask),
-      })
-      setTasks(tasks.map(t => t.id === task.id ? task : t))
-      setEditTask(null)
-      setError('')
-    } catch (e) {
-      setError(e.message)
-    }
+  if (loading) return <Spinner label="Loading coursework" />
+
+  const visible = hideDone ? tasks.filter(t => !t.is_complete) : tasks
+
+  // Grouped by course, because that is how a semester is actually held in mind.
+  const courses = {}
+  for (const task of visible) {
+    const key = (task.course || 'Unassigned').trim()
+    ;(courses[key] ??= []).push(task)
+  }
+  for (const list of Object.values(courses)) {
+    list.sort((a, b) =>
+      (a.actual_due_date || a.my_due_date || '9999').localeCompare(b.actual_due_date || b.my_due_date || '9999'))
   }
 
-  async function toggleComplete(id, current) {
-    try {
-      const { task } = await api(`/api/sweat/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ is_complete: !current }),
-      })
-      setTasks(tasks.map(t => t.id === id ? task : t))
-      setError('')
-    } catch (e) {
-      setError(e.message)
-    }
-  }
-
-  async function deleteTask(id) {
-    try {
-      await api(`/api/sweat/${id}`, { method: 'DELETE' })
-      setTasks(tasks.filter(t => t.id !== id))
-      setEditTask(null)
-      setError('')
-    } catch (e) {
-      setError(e.message)
-    }
-  }
-
-  const filtered = hideComplete ? tasks.filter(t => !t.is_complete) : tasks
+  const noSlack = visible.filter(t => t.my_due_date && t.actual_due_date && t.my_due_date >= t.actual_due_date)
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
-      <div className="max-w-lg mx-auto px-4 py-6">
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/" className="text-gray-400 text-2xl">←</Link>
-          <h1 className="text-2xl font-bold">Sweat</h1>
-          <span className="text-gray-500">{filtered.length} pending</span>
-          <div className="ml-auto flex gap-2">
-            <button onClick={() => setHideComplete(!hideComplete)} className="text-sm text-gray-400 py-1 px-2">
-              {hideComplete ? 'Show all' : 'Hide done'}
-            </button>
-          </div>
+    <div className="mx-auto max-w-2xl px-4 py-5">
+      <header className="mb-4 flex items-center gap-2">
+        <div className="flex-1">
+          <h1 className="text-2xl font-semibold">Sweat</h1>
+          <p className="text-sm text-ink-2">
+            {visible.length} open across {Object.keys(courses).length} courses
+          </p>
         </div>
+        <Button variant="quiet" onClick={() => setHideDone(!hideDone)}>
+          {hideDone ? 'Show done' : 'Hide done'}
+        </Button>
+        <Button variant="primary" onClick={() => setAdding(true)}>Add</Button>
+      </header>
 
-        {error && (
-          <div role="alert" className="bg-red-950 border border-red-800 text-red-300 text-sm rounded-xl px-4 py-3 mb-4">
-            {error}
-          </div>
-        )}
+      {error && <div className="mb-4"><ErrorBanner message={error} onRetry={load} /></div>}
 
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="w-full bg-blue-600 active:bg-blue-700 rounded-2xl py-3 font-semibold mb-4 transition"
-        >+ New Assignment</button>
+      {noSlack.length > 0 && (
+        <p className="mb-4 rounded-md border border-mine/30 bg-mine-soft px-3 py-2 text-[11px] text-mine">
+          {noSlack.length} {noSlack.length === 1 ? 'assignment has' : 'assignments have'} no slack —
+          your date is on or after the real deadline.
+        </p>
+      )}
 
-        {showForm && (
-          <div className="bg-gray-800 rounded-2xl p-4 mb-4 space-y-3">
-            <input className="w-full bg-gray-700 rounded-xl px-4 py-3 outline-none text-base" placeholder="Course (e.g. ISE 4404)" value={newTask.course} onChange={e => setNewTask({ ...newTask, course: e.target.value })} />
-            <input className="w-full bg-gray-700 rounded-xl px-4 py-3 outline-none text-base" placeholder="Assignment title" value={newTask.title} onChange={e => setNewTask({ ...newTask, title: e.target.value })} />
-            <select className="w-full bg-gray-700 rounded-xl px-4 py-3 outline-none text-base" value={newTask.assignment_type} onChange={e => setNewTask({ ...newTask, assignment_type: e.target.value })}>
-              {ASSIGNMENT_TYPES.map(t => <option key={t}>{t}</option>)}
-            </select>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">My Due Date</label>
-                <input type="date" className="w-full bg-gray-700 rounded-xl px-3 py-2 outline-none text-sm" value={newTask.my_due_date} onChange={e => setNewTask({ ...newTask, my_due_date: e.target.value })} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Actual Due Date</label>
-                <input type="date" className="w-full bg-gray-700 rounded-xl px-3 py-2 outline-none text-sm" value={newTask.actual_due_date} onChange={e => setNewTask({ ...newTask, actual_due_date: e.target.value })} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Start Time</label>
-                <input type="time" className="w-full bg-gray-700 rounded-xl px-3 py-2 outline-none text-sm" value={newTask.start_time} onChange={e => setNewTask({ ...newTask, start_time: e.target.value })} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">End Time</label>
-                <input type="time" className="w-full bg-gray-700 rounded-xl px-3 py-2 outline-none text-sm" value={newTask.end_time} onChange={e => setNewTask({ ...newTask, end_time: e.target.value })} />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={addTask} className="flex-1 bg-blue-600 rounded-xl py-3 font-medium">Save</button>
-              <button onClick={() => setShowForm(false)} className="flex-1 bg-gray-700 rounded-xl py-3">Cancel</button>
-            </div>
-          </div>
-        )}
-
-        {editTask && (
-          <div className="fixed inset-0 bg-black/70 flex items-end justify-center z-50" onClick={() => setEditTask(null)}>
-            <div className="bg-gray-900 rounded-t-3xl p-6 w-full max-w-lg space-y-3 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-              <div className="w-10 h-1 bg-gray-600 rounded-full mx-auto mb-4" />
-              <h2 className="font-bold text-lg">Edit Assignment</h2>
-              <input className="w-full bg-gray-700 rounded-xl px-4 py-3 outline-none text-base" value={editTask.course} onChange={e => setEditTask({ ...editTask, course: e.target.value })} placeholder="Course" />
-              <input className="w-full bg-gray-700 rounded-xl px-4 py-3 outline-none text-base" value={editTask.title} onChange={e => setEditTask({ ...editTask, title: e.target.value })} placeholder="Title" />
-              <select className="w-full bg-gray-700 rounded-xl px-4 py-3 outline-none text-base" value={editTask.assignment_type} onChange={e => setEditTask({ ...editTask, assignment_type: e.target.value })}>
-                {ASSIGNMENT_TYPES.map(t => <option key={t}>{t}</option>)}
-              </select>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">My Due Date</label>
-                  <input type="date" className="w-full bg-gray-700 rounded-xl px-3 py-2 outline-none text-sm" value={editTask.my_due_date || ''} onChange={e => setEditTask({ ...editTask, my_due_date: e.target.value })} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Actual Due Date</label>
-                  <input type="date" className="w-full bg-gray-700 rounded-xl px-3 py-2 outline-none text-sm" value={editTask.actual_due_date || ''} onChange={e => setEditTask({ ...editTask, actual_due_date: e.target.value })} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Start Time</label>
-                  <input type="time" className="w-full bg-gray-700 rounded-xl px-3 py-2 outline-none text-sm" value={editTask.start_time || ''} onChange={e => setEditTask({ ...editTask, start_time: e.target.value })} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">End Time</label>
-                  <input type="time" className="w-full bg-gray-700 rounded-xl px-3 py-2 outline-none text-sm" value={editTask.end_time || ''} onChange={e => setEditTask({ ...editTask, end_time: e.target.value })} />
-                </div>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button onClick={saveEdit} className="flex-1 bg-blue-600 rounded-xl py-3 font-medium">Save</button>
-                <button onClick={() => deleteTask(editTask.id)} className="bg-red-900 rounded-xl py-3 px-4">Delete</button>
-                <button onClick={() => setEditTask(null)} className="bg-gray-700 rounded-xl py-3 px-4">Cancel</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {loading ? <p className="text-gray-400">Loading...</p> : (
-          <div className="space-y-3">
-            {filtered.length === 0 && <p className="text-gray-500 text-center py-8">No pending assignments.</p>}
-            {filtered.map(task => {
-              const days = task.actual_due_date ? daysUntil(task.actual_due_date) : task.my_due_date ? daysUntil(task.my_due_date) : null
-              return (
-                <div key={task.id} onClick={() => setEditTask(task)} className={`bg-gray-800 rounded-2xl p-4 cursor-pointer active:bg-gray-700 ${days !== null ? urgencyStyle(days) : ''}`}>
-                  <div className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={task.is_complete}
-                      onChange={e => { e.stopPropagation(); toggleComplete(task.id, task.is_complete) }}
-                      className="accent-blue-500 w-5 h-5 mt-0.5 flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`font-medium text-base ${task.is_complete ? 'line-through text-gray-500' : ''}`}>{task.title}</span>
-                        <span className="text-xs bg-gray-700 rounded-full px-2 py-0.5">{task.assignment_type}</span>
-                      </div>
-                      <p className="text-sm text-gray-400 mt-0.5">{task.course}</p>
-                      <div className="flex gap-3 mt-2 flex-wrap">
-                        {task.my_due_date && <span className="text-xs text-blue-400">My due: {task.my_due_date}</span>}
-                        {task.actual_due_date && <span className="text-xs text-gray-400">Actual: {task.actual_due_date}</span>}
-                        {task.start_time && <span className="text-xs text-gray-500">@{task.start_time}{task.end_time ? '-' + task.end_time : ''}</span>}
-                        {days !== null && <span className={`text-xs font-medium ${urgencyColor(days)}`}>{urgencyLabel(days)}</span>}
-                      </div>
+      {visible.length === 0 ? (
+        <EmptyState
+          title="Nothing due."
+          hint="Between semesters this is correct. Add assignments as the syllabus lands."
+          action={<Button variant="quiet" onClick={() => setAdding(true)}>Add one</Button>}
+        />
+      ) : (
+        <div className="space-y-5">
+          {Object.entries(courses).map(([course, list]) => (
+            <section key={course}>
+              <h2 className="mb-2 px-1 text-[11px] font-medium uppercase tracking-wider text-ink-2">
+                {course}
+                <span className="ml-2 tnum text-ink-3">{list.length}</span>
+              </h2>
+              <div className="space-y-1.5">
+                {list.map(task => (
+                  <div key={task.id} className="rounded-md border border-line bg-surface px-2.5 py-2.5">
+                    <div className="flex items-start gap-2.5">
+                      <Check checked={task.is_complete} onChange={() => toggle(task)}
+                             label={`Complete ${task.title}`} />
+                      <button onClick={() => setEditing({ ...task })} className="min-w-0 flex-1 text-left">
+                        <div className={`clamp-1 text-sm ${task.is_complete ? 'text-ink-3 line-through' : ''}`}>
+                          {task.title}
+                        </div>
+                        {task.assignment_type && (
+                          <div className="mt-0.5 text-[10px] text-ink-3">{task.assignment_type}</div>
+                        )}
+                      </button>
                     </div>
+                    {!task.is_complete && (
+                      <SlackBar
+                        myDate={task.my_due_date}
+                        actualDate={task.actual_due_date}
+                        today={todayIso()}
+                      />
+                    )}
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+
+      <Sheet open={adding || !!editing} onClose={() => { setAdding(false); setEditing(null) }}
+             title={editing ? 'Edit assignment' : 'New assignment'}>
+        <SweatForm
+          task={editing}
+          onSave={body => save(body, editing?.id)}
+          onDelete={editing ? async () => {
+            await api(`/api/sweat/${editing.id}`, { method: 'DELETE' })
+            setEditing(null)
+            load()
+          } : null}
+        />
+      </Sheet>
+    </div>
+  )
+}
+
+function SweatForm({ task, onSave, onDelete }) {
+  const [course, setCourse] = useState(task?.course ?? '')
+  const [title, setTitle] = useState(task?.title ?? '')
+  const [type, setType] = useState(task?.assignment_type ?? 'HW')
+  const [mine, setMine] = useState(task?.my_due_date ?? '')
+  const [actual, setActual] = useState(task?.actual_due_date ?? '')
+
+  const slack = mine && actual
+    ? Math.round((Date.parse(actual + 'T12:00:00Z') - Date.parse(mine + 'T12:00:00Z')) / 86400000)
+    : null
+
+  return (
+    <div className="space-y-3">
+      <Field label="Course">
+        <input value={course} onChange={e => setCourse(e.target.value)} className={inputClass} />
+      </Field>
+      <Field label="Assignment">
+        <input value={title} onChange={e => setTitle(e.target.value)} className={inputClass} />
+      </Field>
+      <Field label="Type">
+        <select value={type} onChange={e => setType(e.target.value)} className={inputClass}>
+          {TYPES.map(t => <option key={t}>{t}</option>)}
+        </select>
+      </Field>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="My date">
+          <input type="date" value={mine} onChange={e => setMine(e.target.value)} className={inputClass} />
+        </Field>
+        <Field label="Real deadline">
+          <input type="date" value={actual} onChange={e => setActual(e.target.value)} className={inputClass} />
+        </Field>
       </div>
-    </main>
+
+      {slack !== null && (
+        <p className={`text-[11px] ${slack > 0 ? 'text-ink-3' : 'text-mine'}`}>
+          {slack > 0
+            ? `${slack} days of room between your date and the real one.`
+            : 'No room — your date is on or after the real deadline.'}
+        </p>
+      )}
+
+      <Button variant="primary" full
+              onClick={() => onSave({
+                course, title, assignment_type: type,
+                my_due_date: mine || null, actual_due_date: actual || null,
+              })}
+              disabled={!title.trim() || !course.trim()}>
+        Save
+      </Button>
+
+      {onDelete && <Button variant="danger" full onClick={onDelete}>Delete</Button>}
+    </div>
   )
 }

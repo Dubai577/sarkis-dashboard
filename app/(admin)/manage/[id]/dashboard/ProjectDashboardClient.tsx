@@ -218,14 +218,14 @@ export default function ProjectDashboardClient({
         {/* Breadcrumb */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div className="flex items-center gap-2 text-sm text-gray-400">
-            <Link href="/projects" className="hover:text-gray-600">Projects</Link>
+            <Link href="/manage" className="hover:text-gray-600">Projects</Link>
             <span>/</span>
-            <Link href={`/projects/${project.id}`} className="hover:text-gray-600">{project.name}</Link>
+            <Link href={`/manage/${project.id}`} className="hover:text-gray-600">{project.name}</Link>
             <span>/</span>
             <span className="text-gray-700 font-medium">Dashboard</span>
           </div>
           <Link
-            href={`/projects/${project.id}`}
+            href={`/manage/${project.id}`}
             className="text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-white"
           >
             ← Summary view
@@ -255,7 +255,7 @@ export default function ProjectDashboardClient({
                 </span>
               )}
               <Link
-                href={`/projects/${project.id}/edit`}
+                href={`/manage/${project.id}/edit`}
                 className="text-xs border border-gray-200 px-3 py-1.5 rounded-full
                            text-gray-500 hover:bg-gray-50 transition-colors"
               >
@@ -350,7 +350,7 @@ export default function ProjectDashboardClient({
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-sm font-semibold text-gray-700">Task breakdown</h2>
                 <Link
-                  href={`/projects/${project.id}/tasks/new`}
+                  href={`/manage/${project.id}/tasks/new`}
                   className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
                 >
                   + Add task
@@ -359,7 +359,7 @@ export default function ProjectDashboardClient({
               {taskStats.length > 0 ? (
                 <div className="space-y-5">
                   {taskStats.map(t => (
-                    <Link key={t.id} href={`/projects/${project.id}/tasks/${t.id}`}
+                    <Link key={t.id} href={`/manage/${project.id}/tasks/${t.id}`}
                           className="block group">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 min-w-0">
@@ -555,7 +555,7 @@ export default function ProjectDashboardClient({
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-sm font-semibold text-gray-700">Notes</h2>
                   <Link
-                    href={`/projects/${project.id}/notes/new`}
+                    href={`/manage/${project.id}/notes/new`}
                     className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
                   >
                     + Add

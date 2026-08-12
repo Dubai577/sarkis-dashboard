@@ -20,8 +20,8 @@ export async function createProject(formData: FormData) {
 
   if (error) throw new Error(error.message)
 
-  revalidatePath('/projects')
-  redirect('/projects')
+  revalidatePath('/manage')
+  redirect('/manage')
 }
 
 export async function updateProject(id: string, formData: FormData) {
@@ -39,9 +39,9 @@ export async function updateProject(id: string, formData: FormData) {
 
   if (error) throw new Error(error.message)
 
-  revalidatePath('/projects')
-  revalidatePath(`/projects/${id}`)
-  redirect(`/projects/${id}`)
+  revalidatePath('/manage')
+  revalidatePath(`/manage/${id}`)
+  redirect(`/manage/${id}`)
 }
 
 export async function createNote(projectId: string, formData: FormData) {
@@ -58,8 +58,8 @@ export async function createNote(projectId: string, formData: FormData) {
 
   if (error) throw new Error(error.message)
 
-  revalidatePath(`/projects/${projectId}`)
-  redirect(`/projects/${projectId}`)
+  revalidatePath(`/manage/${projectId}`)
+  redirect(`/manage/${projectId}`)
 }
 
 export async function deleteProject(id: string) {
@@ -71,6 +71,6 @@ export async function deleteProject(id: string) {
 
   if (error) throw new Error(error.message)
 
-  revalidatePath('/projects')
-  redirect('/projects')
+  revalidatePath('/manage')
+  redirect('/manage')
 }

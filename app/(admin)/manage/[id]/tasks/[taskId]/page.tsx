@@ -53,9 +53,9 @@ export default async function TaskDetailPage({
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto px-6 py-8">
         <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
-          <Link href="/projects" className="hover:text-gray-600">Projects</Link>
+          <Link href="/manage" className="hover:text-gray-600">Projects</Link>
           <span>/</span>
-          <Link href={`/projects/${projectId}`} className="hover:text-gray-600">
+          <Link href={`/manage/${projectId}`} className="hover:text-gray-600">
             {project?.name}
           </Link>
           <span>/</span>

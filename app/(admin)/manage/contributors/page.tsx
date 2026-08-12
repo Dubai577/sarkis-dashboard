@@ -25,7 +25,7 @@ export default async function ContributorsPage() {
       <div className="max-w-4xl mx-auto px-6 py-8">
 
         <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
-          <Link href="/projects" className="hover:text-gray-600 transition-colors">Projects</Link>
+          <Link href="/manage" className="hover:text-gray-600 transition-colors">Projects</Link>
           <span>/</span>
           <span className="text-gray-700 font-medium">Contributors</span>
         </div>

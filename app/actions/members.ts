@@ -22,7 +22,7 @@ export async function addProjectMember(
     role,
   }, { onConflict: 'project_id,contributor_id' })
   if (error) throw new Error(error.message)
-  revalidatePath(`/projects/${projectId}`)
+  revalidatePath(`/manage/${projectId}`)
 }
 
 export async function updateMemberRole(
@@ -37,7 +37,7 @@ export async function updateMemberRole(
     .update({ role })
     .eq('project_id', projectId)
     .eq('contributor_id', contributorId)
-  revalidatePath(`/projects/${projectId}`)
+  revalidatePath(`/manage/${projectId}`)
 }
 
 export async function removeProjectMember(
@@ -51,7 +51,7 @@ export async function removeProjectMember(
     .delete()
     .eq('project_id', projectId)
     .eq('contributor_id', contributorId)
-  revalidatePath(`/projects/${projectId}`)
+  revalidatePath(`/manage/${projectId}`)
 }
 
 export async function createAndAddContributor(projectId: string, formData: FormData) {
@@ -78,5 +78,5 @@ export async function createAndAddContributor(projectId: string, formData: FormD
     role:           (formData.get('role') as string) || 'contributor',
   })
 
-  revalidatePath(`/projects/${projectId}`)
+  revalidatePath(`/manage/${projectId}`)
 }

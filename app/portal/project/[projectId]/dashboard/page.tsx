@@ -1,7 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getContributorToken } from '@/lib/supabase/server'
-import ProjectDashboardClient from '@/app/(admin)/projects/[id]/dashboard/ProjectDashboardClient'
+import ProjectDashboardClient from '@/app/(admin)/manage/[id]/dashboard/ProjectDashboardClient'
 
 export const revalidate = 0
 

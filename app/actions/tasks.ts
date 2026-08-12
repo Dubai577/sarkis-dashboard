@@ -19,8 +19,8 @@ export async function createTask(projectId: string, formData: FormData) {
   }).select().single()
 
   if (error) throw new Error(error.message)
-  revalidatePath(`/projects/${projectId}`)
-  redirect(`/projects/${projectId}/tasks/${task.id}`)
+  revalidatePath(`/manage/${projectId}`)
+  redirect(`/manage/${projectId}/tasks/${task.id}`)
 }
 
 export async function updateTask(taskId: string, projectId: string, formData: FormData) {
@@ -34,8 +34,8 @@ export async function updateTask(taskId: string, projectId: string, formData: Fo
   }).eq('id', taskId)
 
   if (error) throw new Error(error.message)
-  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
-  revalidatePath(`/projects/${projectId}`)
+  revalidatePath(`/manage/${projectId}/tasks/${taskId}`)
+  revalidatePath(`/manage/${projectId}`)
 }
 
 export async function deleteTask(taskId: string, projectId: string) {
@@ -43,8 +43,8 @@ export async function deleteTask(taskId: string, projectId: string) {
 
   const db = createAdminClient()
   await db.from('tasks').delete().eq('id', taskId)
-  revalidatePath(`/projects/${projectId}`)
-  redirect(`/projects/${projectId}`)
+  revalidatePath(`/manage/${projectId}`)
+  redirect(`/manage/${projectId}`)
 }
 
 // ── Subtasks ─────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ export async function createSubtask(taskId: string, projectId: string, formData:
     due_date:    (formData.get('due_date') as string) || null,
   })
   if (error) throw new Error(error.message)
-  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+  revalidatePath(`/manage/${projectId}/tasks/${taskId}`)
 }
 
 export async function updateSubtask(
@@ -75,7 +75,7 @@ export async function updateSubtask(
     due_date:    (formData.get('due_date') as string) || null,
   }).eq('id', subtaskId)
   if (error) throw new Error(error.message)
-  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+  revalidatePath(`/manage/${projectId}/tasks/${taskId}`)
 }
 
 export async function deleteSubtask(subtaskId: string, taskId: string, projectId: string) {
@@ -83,7 +83,7 @@ export async function deleteSubtask(subtaskId: string, taskId: string, projectId
 
   const db = createAdminClient()
   await db.from('subtasks').delete().eq('id', subtaskId)
-  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+  revalidatePath(`/manage/${projectId}/tasks/${taskId}`)
 }
 
 // ── Subtask assignments ──────────────────────────────────────────
@@ -104,7 +104,7 @@ export async function assignContributorToSubtask(
     row, { onConflict: 'subtask_id,contributor_id', ignoreDuplicates: true }
   )
   if (error) throw new Error(error.message)
-  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+  revalidatePath(`/manage/${projectId}/tasks/${taskId}`)
 }
 
 export async function updateAssignmentRole(
@@ -117,7 +117,7 @@ export async function updateAssignmentRole(
     .update({ assignment_role: role.trim() || null })
     .eq('id', assignmentId)
   if (error) throw new Error(error.message)
-  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+  revalidatePath(`/manage/${projectId}/tasks/${taskId}`)
 }
 
 export async function updateSubtaskAssignmentStatus(
@@ -130,7 +130,7 @@ export async function updateSubtaskAssignmentStatus(
     .update({ status })
     .eq('id', assignmentId)
   if (error) throw new Error(error.message)
-  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+  revalidatePath(`/manage/${projectId}/tasks/${taskId}`)
 }
 
 export async function removeSubtaskAssignment(
@@ -146,7 +146,7 @@ export async function removeSubtaskAssignment(
     .delete()
     .eq('subtask_id', subtaskId)
     .eq('contributor_id', contributorId)
-  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+  revalidatePath(`/manage/${projectId}/tasks/${taskId}`)
 }
 
 // ── Dependencies ─────────────────────────────────────────────────
@@ -163,7 +163,7 @@ export async function addDependency(
     task_id:            taskId,
     depends_on_task_id: dependsOnTaskId,
   }, { onConflict: 'task_id,depends_on_task_id', ignoreDuplicates: true })
-  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+  revalidatePath(`/manage/${projectId}/tasks/${taskId}`)
 }
 
 export async function removeDependency(
@@ -178,7 +178,7 @@ export async function removeDependency(
     .delete()
     .eq('task_id', taskId)
     .eq('depends_on_task_id', dependsOnTaskId)
-  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+  revalidatePath(`/manage/${projectId}/tasks/${taskId}`)
 }
 
 // ── Resources ────────────────────────────────────────────────────
@@ -196,7 +196,7 @@ export async function addResource(taskId: string, projectId: string, formData: F
     is_admin_post: true,
   })
   if (error) throw new Error(error.message)
-  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+  revalidatePath(`/manage/${projectId}/tasks/${taskId}`)
 }
 
 export async function deleteResource(
@@ -208,5 +208,5 @@ export async function deleteResource(
 
   const db = createAdminClient()
   await db.from('task_resources').delete().eq('id', resourceId)
-  revalidatePath(`/projects/${projectId}/tasks/${taskId}`)
+  revalidatePath(`/manage/${projectId}/tasks/${taskId}`)
 }

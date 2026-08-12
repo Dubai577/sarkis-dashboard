@@ -30,7 +30,9 @@ if (!URL || !ANON) {
 // A valid payload per table. A schema error (400) would otherwise look like a
 // pass, hiding the fact that the write was never actually refused.
 const TABLES = [
-  { name: 'todos',        row: { title: '__rls_probe__', week_start: '2020-01-06', day_of_week: 'Monday' } },
+  // task_date only: week_start and day_of_week became generated columns in
+  // migration 006 and reject writes, which would look like a refusal.
+  { name: 'todos',        row: { title: '__rls_probe__', task_date: '2020-01-06' } },
   { name: 'sarkis_tasks', row: { title: '__rls_probe__' } },
   { name: 'sweat_tasks',  row: { title: '__rls_probe__', course: '__rls_probe__', due_date: '2020-01-06' } },
   { name: 'notes',        row: { content: '__rls_probe__' } },

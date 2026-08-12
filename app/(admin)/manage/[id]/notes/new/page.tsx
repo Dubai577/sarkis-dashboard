@@ -24,9 +24,9 @@ export default async function NewNotePage({
       <div className="max-w-lg mx-auto px-6 py-8">
 
         <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
-          <Link href="/projects" className="hover:text-gray-600">Projects</Link>
+          <Link href="/manage" className="hover:text-gray-600">Projects</Link>
           <span>/</span>
-          <Link href={`/projects/${id}`} className="hover:text-gray-600">{project.name}</Link>
+          <Link href={`/manage/${id}`} className="hover:text-gray-600">{project.name}</Link>
           <span>/</span>
           <span className="text-gray-700 font-medium">New note</span>
         </div>
@@ -90,7 +90,7 @@ export default async function NewNotePage({
                 Save note
               </button>
               <Link
-                href={`/projects/${id}`}
+                href={`/manage/${id}`}
                 className="text-sm text-gray-400 hover:text-gray-600"
               >
                 Cancel
