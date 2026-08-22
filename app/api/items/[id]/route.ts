@@ -8,7 +8,7 @@ import { today as todayIso } from '@/lib/dates'
 const WRITABLE = [
   'parent_id', 'title', 'notes', 'category_id', 'priority', 'status',
   'planned_date', 'due_date', 'start_time', 'end_time', 'sort_order',
-  'board', 'waiting_on', 'waiting_since', 'nudge_after',
+  'board', 'waiting_on', 'waiting_since', 'nudge_after', 'link',
 ] as const
 
 /** GET /api/items/[id] — the item, its children, and its ancestors. */
@@ -110,8 +110,16 @@ export async function PATCH(
     if (error) throw error
     if (!data) return NextResponse.json({ error: 'Not found.' }, { status: 404 })
 
-    // Archiving a parent archives its subtree.
-    if (patch.archived_at) {
+    /**
+     * Archiving a parent archives its subtree — and unarchiving restores it.
+     * The two must mirror each other: archiving a project and then restoring it
+     * only to find its children still hidden is the kind of half-state that
+     * makes people stop trusting archive and go back to deleting.
+     *
+     * An item whose own parent is still archived is left alone, so restoring a
+     * child does not silently resurrect it into a hidden parent.
+     */
+    if ('archived' in body) {
       const all = await loadItemViews({ includeArchived: true })
       const stack = [id]
       const ids: string[] = []

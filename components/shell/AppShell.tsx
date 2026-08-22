@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Capture } from './Capture'
 import { Sheet } from '@/components/ui/primitives'
+import { ThemeToggle } from '@/components/ui/ThemeToggle'
 
 /**
  * Navigation.
@@ -29,6 +30,7 @@ const SECONDARY = [
   { href: '/today', label: 'Today', hint: 'The full day, with late and dropped' },
   { href: '/list', label: 'Everything', hint: 'One flat list, filtered and sorted' },
   { href: '/bulk', label: 'Bulk add', hint: 'Paste a list, one per line' },
+  { href: '/archive', label: 'Archive', hint: 'Closed work, and the way back out' },
   { href: '/people', label: 'People', hint: 'Who you are waiting on' },
 ]
 
@@ -164,6 +166,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             Sign out
           </button>
+        </div>
+
+        <div className="mt-4 border-t border-line pt-3">
+          <ThemeToggle />
         </div>
       </Sheet>
 

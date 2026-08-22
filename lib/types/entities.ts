@@ -65,6 +65,8 @@ export interface Item {
 
   board: BoardMode
   archived_at: string | null
+  /** Where the work actually happens: admin portal, shared doc, form. */
+  link: string | null
 
   waiting_on: Uuid | null
   waiting_since: IsoDate | null

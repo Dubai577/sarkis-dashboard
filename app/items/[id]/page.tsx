@@ -20,6 +20,8 @@ interface Item {
   planned_date: string | null
   due_date: string | null
   board: 'auto' | 'pinned' | 'muted'
+  link: string | null
+  archived_at: string | null
   waiting_on: string | null
   waiting_since: string | null
   nudge_after: number
@@ -167,6 +169,29 @@ export default function ItemPage({ params }: { params: Promise<{ id: string }> }
           <PossessionGlyph state={item.possession} size={16} className="mt-1.5" />
         </div>
 
+        {item.archived_at && (
+          <p className="mt-2 rounded-sm border border-line bg-surface-2 px-2 py-1 text-[11px] text-ink-3">
+            Archived {mediumLabel(item.archived_at.slice(0, 10))}. Unarchiving brings its
+            children back too.
+          </p>
+        )}
+
+        {item.link && (
+          <a
+            href={item.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 flex items-center gap-1.5 text-[12px] text-mine underline underline-offset-2"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2" aria-hidden="true">
+              <path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.5 1.5" strokeLinecap="round" />
+              <path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7L12 19" strokeLinecap="round" />
+            </svg>
+            <span className="clamp-1">{item.link.replace(/^https?:\/\//, '')}</span>
+          </a>
+        )}
+
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-3">
           {item.category && <span>{item.category.name}</span>}
           {item.child_count > 0 && <span>· {item.open_child_count} open</span>}
@@ -184,7 +209,11 @@ export default function ItemPage({ params }: { params: Promise<{ id: string }> }
               Split into {data.split.children.length}
             </Button>
           )}
-          <Button variant="danger" onClick={() => archive(item.id)}>Archive</Button>
+          {item.archived_at ? (
+            <Button variant="primary" onClick={() => patch({ archived: false })}>Unarchive</Button>
+          ) : (
+            <Button variant="danger" onClick={() => archive(item.id)}>Archive</Button>
+          )}
         </div>
       </header>
 
@@ -396,6 +425,7 @@ function EditForm({
   const [due, setDue] = useState(item.due_date ?? '')
   const [categoryId, setCategoryId] = useState(item.category_id ?? '')
   const [board, setBoard] = useState(item.board)
+  const [link, setLink] = useState(item.link ?? '')
 
   return (
     <div className="space-y-3">
@@ -432,6 +462,17 @@ function EditForm({
         </select>
       </Field>
 
+      <Field label="Link">
+        <input
+          type="url"
+          inputMode="url"
+          placeholder="https://docs.google.com/… or the admin portal"
+          value={link}
+          onChange={e => setLink(e.target.value)}
+          className={inputClass}
+        />
+      </Field>
+
       <Field label="Notes">
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={4}
                   className={`${inputClass} resize-none`} />
@@ -447,6 +488,7 @@ function EditForm({
           due_date: due || null,
           category_id: categoryId || null,
           board,
+          link: link.trim() || null,
         })}
       >
         Save

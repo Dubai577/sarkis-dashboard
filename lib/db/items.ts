@@ -25,7 +25,7 @@ export interface ItemView extends Item {
 const COLUMNS =
   'id,parent_id,title,notes,category_id,priority,status,planned_date,due_date,' +
   'start_time,end_time,sort_order,board,archived_at,waiting_on,waiting_since,' +
-  'nudge_after,created_at,updated_at'
+  'nudge_after,link,created_at,updated_at'
 
 /**
  * Loads every non-archived item once and assembles the views in memory.

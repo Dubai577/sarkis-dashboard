@@ -24,6 +24,7 @@
  *     +Urgent          priority: Urgent | Soon | Whenever | N/A
  *     %working         status: notstarted | working | done
  *     *pinned          board: pinned | muted   (default is auto)
+ *     &{https://…}     a link — the portal, doc or form where the work lives
  *
  * Multi-word values go in braces: #{OCCM VT}, ~{Fady Mansour}.
  *
@@ -55,6 +56,7 @@ export interface TextNode {
   status?: string
   board?: 'auto' | 'pinned' | 'muted'
   archived?: boolean
+  link?: string
 }
 
 const STATUS_TO_TOKEN: Record<string, string> = {
@@ -85,6 +87,9 @@ function annotationsFor(node: TextNode): string {
   if (node.priority && node.priority !== 'N/A') parts.push(`+${wrap(node.priority)}`)
   if (node.status && STATUS_TO_TOKEN[node.status]) parts.push(`%${STATUS_TO_TOKEN[node.status]}`)
   if (node.board && node.board !== 'auto') parts.push(`*${node.board}`)
+  // Always braced: a URL can contain '&', '?' and '=', any of which would
+  // otherwise look like the start of the next annotation.
+  if (node.link) parts.push(`&{${node.link}}`)
   return parts.join(' ')
 }
 
@@ -116,7 +121,7 @@ export function serializeTree(nodes: TextNode[]): string {
 function readAnnotations(text: string): Partial<TextNode> {
   const out: Partial<TextNode> = {}
   // sigil + either {braced value} or a run of non-space characters
-  const pattern = /([#@!~^+%*])(?:\{([^}]*)\}|(\S+))/g
+  const pattern = /([#@!~^+%*&])(?:\{([^}]*)\}|(\S+))/g
   let match: RegExpExecArray | null
 
   while ((match = pattern.exec(text))) {
@@ -137,6 +142,8 @@ function readAnnotations(text: string): Partial<TextNode> {
       case '+': out.priority = value; break
       case '%': if (TOKEN_TO_STATUS[value.toLowerCase()]) out.status = TOKEN_TO_STATUS[value.toLowerCase()]; break
       case '*': if (value === 'pinned' || value === 'muted') out.board = value; break
+      // http(s) only — the database constraint rejects anything else anyway.
+      case '&': if (/^https?:\/\/\S+$/i.test(value)) out.link = value; break
     }
   }
   return out

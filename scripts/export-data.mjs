@@ -83,6 +83,7 @@ const HEADER = `# ============================================================
 #   +Urgent        priority: Urgent | Soon | Whenever | N/A
 #   %working       status: notstarted | working | done
 #   *pinned        board: pinned | muted (default auto)
+#   &{https://…}   a link — portal, doc or form where the work lives
 #
 #   Multi-word values go in braces.
 #   Indent two spaces to make a line a child of the line above.
@@ -108,6 +109,7 @@ const toNode = (item) => ({
   priority: item.priority ?? undefined,
   status: item.status ?? undefined,
   board: item.board ?? undefined,
+  link: item.link ?? undefined,
   archived: !!item.archived_at,
   children: items
     .filter(c => c.parent_id === item.id)

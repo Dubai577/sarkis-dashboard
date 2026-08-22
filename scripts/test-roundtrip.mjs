@@ -119,13 +119,37 @@ for (const item of items.filter(i => dbChildren.has(i.id))) {
 }
 check('parent/child structure preserved', structureOk)
 
-// Serializing what we parsed must produce identical text — proof the format is
-// stable and not merely lossy in one direction.
+// Serializing what we parsed must round-trip — proof the format is stable and
+// not merely lossy in one direction.
+//
+// Compared by MEANING, not by key order. Serialization writes annotations in a
+// canonical order, so a hand-edited file with '&{link}' before '@date' parses
+// to the same fields in a different insertion order. Comparing raw JSON would
+// report that as a failure, which would train us to ignore this check.
+const canon = (nodes) =>
+  nodes.map(n => ({
+    title: n.title, category: n.category ?? null, planned_date: n.planned_date ?? null,
+    due_date: n.due_date ?? null, link: n.link ?? null, waiting_on: n.waiting_on ?? null,
+    nudge_after: n.nudge_after ?? null, priority: n.priority ?? null,
+    status: n.status ?? null, board: n.board ?? null, archived: !!n.archived,
+    notes: n.notes ?? null, children: canon(n.children),
+  }))
+
 const sampleFile = path.join(OUT, 'categories', 'occm-vt.txt')
 if (fs.existsSync(sampleFile)) {
   const once = parseText(fs.readFileSync(sampleFile, 'utf8'))
   const twice = parseText(serializeTree(once))
-  check('serialize → parse is stable', JSON.stringify(once) === JSON.stringify(twice))
+  check('serialize → parse is stable', JSON.stringify(canon(once)) === JSON.stringify(canon(twice)))
+}
+
+// And the same, for a line using every annotation with them out of order.
+{
+  const messy = 'portal work | &{https://x.example.com/a?b=1&c=2} %working #Convent ^14 @2026-09-01 +Urgent !2026-09-15 *pinned'
+  const once = parseText(messy)
+  const twice = parseText(serializeTree(once))
+  check('annotations in any order round-trip', JSON.stringify(canon(once)) === JSON.stringify(canon(twice)))
+  check('  link with & and = survives', once[0].link === 'https://x.example.com/a?b=1&c=2')
+  check('  javascript: is refused', parseText('x | &{javascript:alert(1)}')[0].link === undefined)
 }
 
 console.log(`\n  compared ${compared} items across ${pass + fail} assertions`)

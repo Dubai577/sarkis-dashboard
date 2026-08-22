@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
         priority: node.priority ?? null,
         status: node.status ?? null,
         board: node.board ?? 'auto',
+        link: node.link ?? null,
         nudge_after: node.nudge_after ?? 7,
         waiting_on: person ?? waitingOn,
         waiting_since: (person ?? waitingOn) ? todayIso() : null,

@@ -7,14 +7,16 @@ import { loadItemViews, boardItems, areaItems, childrenOf } from '@/lib/db/items
 const WRITABLE = [
   'parent_id', 'title', 'notes', 'category_id', 'priority', 'status',
   'planned_date', 'due_date', 'start_time', 'end_time', 'sort_order',
-  'board', 'waiting_on', 'waiting_since', 'nudge_after',
+  'board', 'waiting_on', 'waiting_since', 'nudge_after', 'link',
 ] as const
 
 /**
  * GET /api/items
- *   ?view=board    roots for the projects board, plus the muted areas
- *   ?parent=<id>   direct children of one item
- *   (default)      every open item
+ *   ?view=board       roots for the projects board, plus the muted areas
+ *   ?parent=<id>      direct children of one item
+ *   ?archived=only    archived items — the restore list
+ *   ?archived=include open and archived together
+ *   (default)         every open item
  */
 export async function GET(req: NextRequest) {
   const denied = await denyUnlessAdmin()
@@ -22,9 +24,18 @@ export async function GET(req: NextRequest) {
 
   const view = req.nextUrl.searchParams.get('view')
   const parent = req.nextUrl.searchParams.get('parent')
+  const archived = req.nextUrl.searchParams.get('archived')
 
   try {
-    const all = await loadItemViews()
+    const all = await loadItemViews({ includeArchived: archived === 'only' || archived === 'include' })
+
+    if (archived === 'only') {
+      return NextResponse.json({
+        items: all
+          .filter(i => i.archived_at)
+          .sort((a, b) => (b.archived_at ?? '').localeCompare(a.archived_at ?? '')),
+      })
+    }
 
     if (view === 'board') {
       return NextResponse.json({
