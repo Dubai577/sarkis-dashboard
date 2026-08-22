@@ -22,10 +22,16 @@ export interface ItemView extends Item {
   people: { id: Uuid; name: string; relation: string }[]
 }
 
-const COLUMNS =
-  'id,parent_id,title,notes,category_id,priority,status,planned_date,due_date,' +
-  'start_time,end_time,sort_order,board,archived_at,waiting_on,waiting_since,' +
-  'nudge_after,link,created_at,updated_at'
+/**
+ * '*' rather than a column list, deliberately.
+ *
+ * Naming columns here couples every item read to whichever migration last
+ * added one: threading `link` into this list and deploying before migration
+ * 014 had run turned every read into a 500 — the hub, projects, people and
+ * the list all went down at once. `items` is a narrow table, so the cost of
+ * selecting everything is nil next to that failure mode.
+ */
+const COLUMNS = '*'
 
 /**
  * Loads every non-archived item once and assembles the views in memory.
