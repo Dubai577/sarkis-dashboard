@@ -34,8 +34,9 @@ export async function GET() {
       assignRes, contribRes, projRes, items,
     ] = await Promise.all([
       db.from('todos').select('*').eq('task_date', now).order('sort_order'),
-      db.from('todos').select('id,task_date,is_complete')
-        .gte('task_date', start).lte('task_date', addDays(start, 6)),
+      db.from('todos').select('*')
+        .gte('task_date', start).lte('task_date', addDays(start, 6))
+        .order('task_date').order('sort_order'),
       db.from('notes').select('id,content,created_at').order('created_at', { ascending: false }).limit(6),
       db.from('routines').select('id,name,cadence,weekday,anchor_date,sort_order,is_active').eq('is_active', true),
       db.from('routine_checks').select('routine_id').eq('check_date', now),
@@ -67,12 +68,33 @@ export async function GET() {
       }
     })
 
-    // ── project rows, for the expanded view ──
-    const projectChildren = new Map<string, { id: string; title: string; possession: string }[]>()
+    /**
+     * EVERY child of every project, not a sample.
+     *
+     * This used to cap at 6, which defeated the point: with 100+ items the
+     * whole job of the dashboard is seeing them all at once instead of opening
+     * twelve projects one at a time.
+     */
+    const projectChildren = new Map<string, {
+      id: string; title: string; possession: string
+      planned_date: string | null; due_date: string | null
+      link: string | null; waiting: string | null; days: number | null
+    }[]>()
     for (const i of items) {
       if (!i.parent_id) continue
       const list = projectChildren.get(i.parent_id) ?? []
-      if (list.length < 6) list.push({ id: i.id, title: i.title, possession: i.possession })
+      list.push({
+        id: i.id,
+        title: i.title,
+        possession: i.possession,
+        planned_date: i.planned_date,
+        due_date: i.due_date,
+        link: i.link ?? null,
+        waiting: i.waiting_person?.name ?? null,
+        days: i.waiting_since
+          ? Math.round((Date.parse(`${now}T12:00:00Z`) - Date.parse(`${i.waiting_since}T12:00:00Z`)) / 86400000)
+          : null,
+      })
       projectChildren.set(i.parent_id, list)
     }
 
@@ -89,6 +111,8 @@ export async function GET() {
         heat: p.heat,
         isSchool: p.category?.name === 'School',
         category_id: p.category_id,
+        categoryName: p.category?.name ?? null,
+        link: p.link ?? null,
         waiting_person: p.waiting_person,
         children: projectChildren.get(p.id) ?? [],
       }))
@@ -179,6 +203,9 @@ export async function GET() {
       overdueCount: overdueRes.data?.length ?? 0,
       droppedCount: items.filter(i => i.possession === 'dropped').length,
       week,
+      // The week's actual rows, so the dashboard can list them rather than
+      // showing a count and making you go somewhere else to read it.
+      weekTodos: weekRows,
       projects,
       school,
       notes: notesRes.data ?? [],

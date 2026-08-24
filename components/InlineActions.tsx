@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Sheet, Button, Field, inputClass } from '@/components/ui/primitives'
 import { PossessionGlyph } from '@/components/ui/Possession'
-import { today as todayIso } from '@/lib/dates'
+import { addDays, dayIndex, today as todayIso } from '@/lib/dates'
 import type { Possession } from '@/lib/possession'
 
 /**
@@ -153,6 +153,84 @@ export function AddChild({
   )
 }
 
+/**
+ * Give an item a date, or say it does not need one.
+ *
+ * "Ongoing" exists because undated is two different things: something you have
+ * not scheduled yet, and something that genuinely runs continuously. Without
+ * the distinction every long-running project sits in the same pile as things
+ * you have forgotten to plan, and that pile stops being worth reading.
+ */
+export function QuickDate({
+  item,
+  onDone,
+}: {
+  item: { id: string; planned_date: string | null; status: string | null }
+  onDone: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  async function set(body: Record<string, unknown>) {
+    setBusy(true)
+    try {
+      await fetch(`/api/items/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      onDone()
+      setOpen(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const ongoing = item.status === 'Ongoing'
+
+  if (!open) {
+    return (
+      <button
+        onClick={e => { e.preventDefault(); e.stopPropagation(); setOpen(true) }}
+        className={`shrink-0 rounded-sm border px-1.5 py-px text-[10px] ${
+          ongoing ? 'border-theirs/40 text-theirs' : 'border-line text-ink-3'
+        }`}
+      >
+        {ongoing ? 'ongoing' : '+ date'}
+      </button>
+    )
+  }
+
+  return (
+    <span className="flex shrink-0 items-center gap-1" onClick={e => e.stopPropagation()}>
+      {([['Today', todayIso()], ['Tue', nextWeekday(2)], ['+1w', addDays(todayIso(), 7)]] as const).map(
+        ([label, date]) => (
+          <button key={label} disabled={busy}
+                  onClick={() => set({ planned_date: date, status: null })}
+                  className="rounded-sm border border-line px-1 py-px text-[10px] text-ink-2">
+            {label}
+          </button>
+        ),
+      )}
+      <input
+        type="date"
+        disabled={busy}
+        defaultValue={item.planned_date ?? ''}
+        onChange={e => e.target.value && set({ planned_date: e.target.value, status: null })}
+        className="w-[104px] rounded-sm border border-line bg-surface-2 px-1 py-px text-[10px]"
+      />
+      <button disabled={busy}
+              onClick={() => set({ status: ongoing ? null : 'Ongoing', planned_date: null })}
+              className={`rounded-sm border px-1 py-px text-[10px] ${
+                ongoing ? 'border-theirs text-theirs' : 'border-line text-ink-3'
+              }`}>
+        ongoing
+      </button>
+      <button onClick={() => setOpen(false)} className="px-1 text-[10px] text-ink-3">×</button>
+    </span>
+  )
+}
+
 /** Turn a note into an item, in place. The note is kept. */
 export function PromoteNote({
   note,
@@ -265,6 +343,16 @@ export function PromoteNote({
       </div>
     </Sheet>
   )
+}
+
+/** The next occurrence of a weekday — 0 = Monday. Today counts as next. */
+function nextWeekday(target: number): string {
+  const start = todayIso()
+  for (let i = 0; i < 7; i++) {
+    const candidate = addDays(start, i)
+    if (dayIndex(candidate) === target) return candidate
+  }
+  return start
 }
 
 export type { Possession }

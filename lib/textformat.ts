@@ -22,7 +22,7 @@
  *     ~Name            waiting on this person ~Fady      ~{Fady Mansour}
  *     ^7               nudge after N days (default 7)
  *     +Urgent          priority: Urgent | Soon | Whenever | N/A
- *     %working         status: notstarted | working | done
+ *     %working         status: notstarted | working | done | ongoing
  *     *pinned          board: pinned | muted   (default is auto)
  *     &{https://…}     a link — the portal, doc or form where the work lives
  *
@@ -63,11 +63,16 @@ const STATUS_TO_TOKEN: Record<string, string> = {
   "Haven't Started": 'notstarted',
   'Working on it': 'working',
   'Done': 'done',
+  // Deliberately undated: an ongoing commitment, not something waiting to be
+  // scheduled. Without this, everything without a date looks like a backlog
+  // item you have failed to plan.
+  'Ongoing': 'ongoing',
 }
 const TOKEN_TO_STATUS: Record<string, string> = {
   notstarted: "Haven't Started",
   working: 'Working on it',
   done: 'Done',
+  ongoing: 'Ongoing',
 }
 
 /** Braces only when the value would otherwise be ambiguous. */

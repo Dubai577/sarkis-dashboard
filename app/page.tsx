@@ -1,74 +1,95 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
-import { TodoRow, SlackBar, type RowTodo } from '@/components/rows'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { PossessionGlyph } from '@/components/ui/Possession'
-import { Panel } from '@/components/ui/Panel'
-import { ErrorBanner, Spinner } from '@/components/ui/primitives'
-import { AddChild, PromoteNote, WaitingOnSheet } from '@/components/InlineActions'
-import { mediumLabel, shortLabel } from '@/lib/dates'
+import { Check, ErrorBanner, Spinner } from '@/components/ui/primitives'
+import { AddChild, QuickDate, WaitingOnSheet } from '@/components/InlineActions'
+import { dayIndex, DAY_NAMES, mediumLabel } from '@/lib/dates'
 
 /**
- * The hub.
+ * The dashboard — one tab, all of it, visible at once.
  *
- * Not a menu of links — the things themselves, actionable in place. The only
- * surface deliberately not folded in is the calendar: time needs a full screen
- * and does not compress into a panel, so it has its own tab.
+ * The previous version was an accordion of panels, which was the wrong shape:
+ * with 100+ items the whole job is SEEING them together, and collapsing is the
+ * opposite of that. So nothing here hides. It is one long dense scroll.
  *
- * Everything is a collapsible Panel that remembers its state, so the hub can
- * hold far more than fits a screen and still open where you left it. An empty
- * section collapses to one quiet line rather than a card announcing emptiness —
- * at 375px, five "nothing here" cards is the whole screen.
+ * The organising axis is date state, because that is the question actually
+ * being asked of it:
  *
- * Panel selection and order are provisional until the sorted export comes back;
- * each is a self-contained block, so rearranging is moving lines, not a rewrite.
+ *   on a day    an appointment on Tuesday — a specific date
+ *   due         a deadline
+ *   ongoing     deliberately undated, a continuing commitment
+ *   no date     none of the above, and probably needs one
+ *
+ * Every row can be given a date or marked ongoing in place, because the point
+ * of seeing the undated pile is emptying it.
  */
 
-interface Dropped {
-  id: string; title: string
-  category: { name: string; color: string } | null
-  waiting_person: { id: string; name: string } | null
-  waiting_since: string | null; nudge_after: number
-  possession: 'dropped'; waiting_on: string | null
+interface Child {
+  id: string; title: string; possession: 'mine' | 'theirs' | 'dropped'
+  planned_date: string | null; due_date: string | null
+  link: string | null; waiting: string | null; days: number | null
+  status?: string | null
 }
 
 interface Project {
   id: string; title: string; color: string | null
   open: number; total: number; dropped: number
+  isSchool: boolean; category_id: string | null; categoryName: string | null
+  link: string | null
   possession: 'mine' | 'theirs' | 'dropped'
-  isSchool: boolean; category_id: string | null
   waiting_person: { id: string; name: string } | null
-  children: { id: string; title: string; possession: 'mine' | 'theirs' | 'dropped' }[]
+  children: Child[]
+}
+
+interface Todo {
+  id: string; title: string; task_date: string; is_complete: boolean
+  start_time: string | null
 }
 
 interface Payload {
   date: string
-  todos: RowTodo[]
+  weekStart: string
+  todos: Todo[]
+  weekTodos: Todo[]
   overdueCount: number
   droppedCount: number
-  week: { date: string; total: number; done: number; isToday: boolean }[]
   projects: Project[]
-  dropped: Dropped[]
-  waiting: { id: string; name: string; items: { id: string; title: string; days: number | null; dropped: boolean }[] }[]
-  school: { id: string; title: string; planned_date: string | null; due_date: string | null }[]
-  notes: { id: string; content: string; created_at: string }[]
-  routines: { total: number; done: number }
-  categories: { id: string; name: string; color: string }[]
   people: { id: string; name: string }[]
-  contributors: {
-    people: number
-    recentDone: { id: string; who: string; what: string; project: string | null }[]
-    outstanding: { project: string; count: number }[]
-  }
+  notes: { id: string; content: string }[]
+  routines: { total: number; done: number }
+  contributors: { recentDone: { id: string; who: string; what: string; project: string | null }[] }
 }
 
-export default function HubPage() {
+type Lens = 'all' | 'day' | 'due' | 'none' | 'ongoing'
+
+const LENSES: { value: Lens; label: string }[] = [
+  { value: 'all', label: 'Everything' },
+  { value: 'day', label: 'On a day' },
+  { value: 'due', label: 'Due' },
+  { value: 'none', label: 'No date' },
+  { value: 'ongoing', label: 'Ongoing' },
+]
+
+function dateStateOf(c: Child): Lens {
+  if (c.planned_date) return 'day'
+  if (c.due_date) return 'due'
+  if (c.status === 'Ongoing') return 'ongoing'
+  return 'none'
+}
+
+function DashboardView() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const params = useSearchParams()
+  const lens = (params.get('lens') as Lens) || 'all'
+
   const [data, setData] = useState<Payload | null>(null)
   const [error, setError] = useState('')
-  const [waitingTarget, setWaitingTarget] = useState<Dropped | null>(null)
-  const [noteTarget, setNoteTarget] = useState<{ id: string; content: string } | null>(null)
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const [waitingTarget, setWaitingTarget] = useState<Child | null>(null)
+  const groupRefs = useRef<Record<string, HTMLElement | null>>({})
 
   const load = useCallback(async () => {
     try {
@@ -90,10 +111,18 @@ export default function HubPage() {
     return () => window.removeEventListener('merc:captured', onCapture)
   }, [load])
 
-  async function toggleTodo(todo: RowTodo) {
+  const setLens = (next: Lens) => {
+    const p = new URLSearchParams(params.toString())
+    if (next === 'all') p.delete('lens')
+    else p.set('lens', next)
+    router.replace(p.toString() ? `${pathname}?${p}` : pathname, { scroll: false })
+  }
+
+  async function toggleTodo(todo: Todo) {
     if (!data) return
     const next = !todo.is_complete
-    setData({ ...data, todos: data.todos.map(t => (t.id === todo.id ? { ...t, is_complete: next } : t)) })
+    const patch = (l: Todo[]) => l.map(t => (t.id === todo.id ? { ...t, is_complete: next } : t))
+    setData({ ...data, todos: patch(data.todos), weekTodos: patch(data.weekTodos) })
     try {
       const res = await fetch(`/api/todos/${todo.id}/complete`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -106,265 +135,307 @@ export default function HubPage() {
     }
   }
 
+  /** Counts across every child, so a lens button shows what it will show. */
+  const tally = useMemo(() => {
+    const t: Record<Lens, number> = { all: 0, day: 0, due: 0, none: 0, ongoing: 0 }
+    for (const p of data?.projects ?? []) {
+      for (const c of p.children) { t.all++; t[dateStateOf(c)]++ }
+    }
+    return t
+  }, [data])
+
   if (error && !data) return <div className="p-4"><ErrorBanner message={error} onRetry={load} /></div>
   if (!data) return <Spinner label="Loading" />
 
-  const open = data.todos.filter(t => !t.is_complete)
-  const roots = data.projects.map(p => ({ id: p.id, title: p.title }))
+  const keep = (c: Child) => lens === 'all' || dateStateOf(c) === lens
+  const groups = data.projects
+    .map(p => ({ project: p, rows: p.children.filter(keep) }))
+    .filter(g => lens === 'all' || g.rows.length > 0)
+
+  const shownRows = groups.reduce((n, g) => n + g.rows.length, 0)
+  const todayOpen = data.todos.filter(t => !t.is_complete)
+  const laterThisWeek = data.weekTodos
+    .filter(t => !t.is_complete && t.task_date > data.date)
+    .sort((a, b) => a.task_date.localeCompare(b.task_date))
 
   return (
-    <div className="mx-auto max-w-3xl px-3 py-3">
+    <div className="mx-auto max-w-4xl px-3 pb-8 pt-3">
       {error && <div className="mb-2"><ErrorBanner message={error} onRetry={load} /></div>}
 
-      {/* Attention: the two states nothing else in the app surfaces. */}
-      {(data.droppedCount > 0 || data.overdueCount > 0) && (
-        <div className="mb-2 flex gap-1.5">
+      {/* ── time: the two questions with an answer today ── */}
+      <div className="mb-3 grid gap-3 sm:grid-cols-2">
+        <TimeBlock
+          title="Today"
+          when={mediumLabel(data.date)}
+          count={todayOpen.length}
+          href={`/calendar?view=day&date=${data.date}`}
+        >
+          {todayOpen.length === 0
+            ? <p className="py-1 text-[12px] text-ink-3">Nothing on today.</p>
+            : todayOpen.map(t => (
+                <TodoLine key={t.id} todo={t} onToggle={() => toggleTodo(t)} />
+              ))}
+        </TimeBlock>
+
+        <TimeBlock
+          title="This week"
+          when={`from ${mediumLabel(data.weekStart)}`}
+          count={laterThisWeek.length}
+          href="/calendar?view=week"
+        >
+          {laterThisWeek.length === 0
+            ? <p className="py-1 text-[12px] text-ink-3">Nothing else dated this week.</p>
+            : laterThisWeek.map(t => (
+                <TodoLine key={t.id} todo={t} onToggle={() => toggleTodo(t)} showDay />
+              ))}
+        </TimeBlock>
+      </div>
+
+      {/* ── attention, one line rather than its own panel ── */}
+      {(data.droppedCount > 0 || data.overdueCount > 0 || data.routines.total > 0) && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
           {data.droppedCount > 0 && (
-            <span className="flex-1 rounded-md border border-dropped/40 bg-dropped-soft px-2 py-1">
-              <span className="block text-[9px] uppercase tracking-wide text-dropped">Needs a nudge</span>
-              <span className="text-sm tnum text-dropped">{data.droppedCount}</span>
+            <span className="rounded-sm border border-dropped/40 bg-dropped-soft px-1.5 py-0.5 text-dropped">
+              {data.droppedCount} need a nudge
             </span>
           )}
           {data.overdueCount > 0 && (
-            <Link href="/today" className="flex-1 rounded-md border border-line px-2 py-1">
-              <span className="block text-[9px] uppercase tracking-wide text-ink-3">Late</span>
-              <span className="text-sm tnum text-ink-2">{data.overdueCount}</span>
+            <Link href="/today" className="rounded-sm border border-line px-1.5 py-0.5 text-ink-2">
+              {data.overdueCount} late
             </Link>
+          )}
+          <span className="text-ink-3">routines {data.routines.done}/{data.routines.total}</span>
+          {data.contributors.recentDone.length > 0 && (
+            <span className="text-ink-3">
+              {data.contributors.recentDone.length} contributor updates
+            </span>
           )}
         </div>
       )}
 
-      <Panel id="today" title="Today" count={open.length}
-             hint={`routines ${data.routines.done}/${data.routines.total}`}
-             emptyLabel="nothing scheduled"
-             action={<Link href="/today" className="text-[10px] text-ink-3">full →</Link>}>
-        {open.map(todo => (
-          <TodoRow key={todo.id} todo={todo} onToggle={() => toggleTodo(todo)} />
-        ))}
-      </Panel>
-
-      <Panel id="week" title="This week" count={data.week.reduce((n, d) => n + d.total, 0)}
-             emptyLabel="nothing dated this week"
-             action={<Link href="/calendar?view=week" className="text-[10px] text-ink-3">calendar →</Link>}>
-        <div className="flex gap-1">
-          {data.week.map(day => (
-            <Link key={day.date} href={`/calendar?view=day&date=${day.date}`}
-                  className={`flex-1 rounded-sm border px-1 py-1 text-center ${
-                    day.isToday ? 'border-mine' : 'border-line'
-                  }`}>
-              <span className="block text-[9px] uppercase text-ink-3">{shortLabel(day.date)}</span>
-              <span className={`block text-[13px] tnum ${day.total ? 'text-ink' : 'text-ink-3'}`}>
-                {day.total || '·'}
-              </span>
-              <span className="mt-0.5 block h-[2px] rounded-full bg-surface-3">
-                <span className="block h-full rounded-full bg-done"
-                      style={{ width: `${day.total ? (day.done / day.total) * 100 : 0}%` }} />
-              </span>
-            </Link>
+      {/* ── the lens: re-slices everything below by date state ── */}
+      <div className="sticky top-0 z-20 -mx-3 mb-2 border-b border-line bg-bg/95 px-3 py-1.5 backdrop-blur">
+        <div className="no-bar flex gap-1 overflow-x-auto">
+          {LENSES.map(l => (
+            <button key={l.value} onClick={() => setLens(l.value)}
+                    className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] ${
+                      lens === l.value ? 'border-mine bg-mine-soft text-mine' : 'border-line text-ink-2'
+                    }`}>
+              {l.label} <span className="tnum opacity-60">{tally[l.value]}</span>
+            </button>
           ))}
         </div>
-      </Panel>
+      </div>
 
-      <Panel id="dropped" title="Needs a nudge" count={data.dropped.length} tone="dropped"
-             hint="waiting too long" emptyLabel="nobody is overdue to reply">
-        {data.dropped.map(item => (
-          <div key={item.id} className="flex items-center gap-2 border-b border-line/60 py-1.5 last:border-b-0">
-            <span className="h-4 w-[2px] shrink-0 rounded-full"
-                  style={{ background: item.category?.color ?? 'var(--border-2)' }} />
-            <Link href={`/items/${item.id}`} className="clamp-1 min-w-0 flex-1 text-[13px]">
-              {item.title}
-            </Link>
-            <button onClick={() => setWaitingTarget(item)}
-                    className="shrink-0 text-[10px] tnum text-dropped underline underline-offset-2">
-              {item.waiting_person?.name ?? 'set'}
-            </button>
-            <PossessionGlyph state="dropped" size={11} />
-          </div>
-        ))}
-      </Panel>
-
-      <Panel id="waiting" title="Waiting on" count={data.waiting.length}
-             emptyLabel="not waiting on anyone"
-             action={<Link href="/people" className="text-[10px] text-ink-3">people →</Link>}>
-        {data.waiting.map(person => (
-          <div key={person.id} className="border-b border-line/60 py-1.5 last:border-b-0">
-            <div className="flex items-baseline gap-2">
-              <Link href={`/people/${person.id}`} className="text-[13px]">{person.name}</Link>
-              <span className="text-[10px] tnum text-ink-3">{person.items.length}</span>
-              {person.items.some(i => i.dropped) && (
-                <span className="text-[10px] text-dropped">needs a nudge</span>
-              )}
-            </div>
-            {person.items.slice(0, 3).map(i => (
-              <Link key={i.id} href={`/items/${i.id}`}
-                    className="clamp-1 block pl-2 text-[11px] leading-snug text-ink-3">
-                {i.title}{i.days !== null && ` · ${i.days}d`}
-              </Link>
-            ))}
-          </div>
-        ))}
-      </Panel>
-
-      <Panel id="projects" title="Projects" count={data.projects.length}
-             emptyLabel="no projects yet"
-             action={<Link href="/projects" className="text-[10px] text-ink-3">full →</Link>}>
-        <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-8">
-          {data.projects.map(p => (
-            <button key={p.id} onClick={() => setExpanded(expanded === p.id ? null : p.id)}
-                    className="flex flex-col items-center gap-0.5">
+      {/* ── the circles: kept, and now a jump control ── */}
+      <div className="no-bar mb-3 flex gap-2 overflow-x-auto pb-1">
+        {data.projects.map(p => {
+          const rows = p.children.filter(keep).length
+          return (
+            <button
+              key={p.id}
+              onClick={() => groupRefs.current[p.id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="flex w-[46px] shrink-0 flex-col items-center gap-0.5"
+              title={`${p.title} — jump to it`}
+            >
               <Ring open={p.open} total={p.total} color={p.color}
-                    dropped={p.dropped > 0} school={p.isSchool} active={expanded === p.id} />
-              <span className="clamp-1 w-full text-center text-[9px] leading-tight text-ink-3">
+                    dropped={p.dropped > 0} school={p.isSchool} dimmed={rows === 0} />
+              <span className="clamp-1 w-full text-center text-[8px] leading-tight text-ink-3">
                 {p.title}
               </span>
             </button>
-          ))}
-        </div>
-
-        {/* Tapping a ring opens that project in place rather than navigating. */}
-        {expanded && (() => {
-          const project = data.projects.find(p => p.id === expanded)
-          if (!project) return null
-          return (
-            <div className="mt-2 rounded-md border border-line p-2">
-              <div className="mb-1 flex items-baseline gap-2">
-                <Link href={`/items/${project.id}`} className="text-[13px] font-medium">{project.title}</Link>
-                <span className="text-[10px] tnum text-ink-3">{project.open} open</span>
-                {project.waiting_person && (
-                  <span className="text-[10px] text-ink-3">waiting on {project.waiting_person.name}</span>
-                )}
-              </div>
-              {project.children.map(c => (
-                <Link key={c.id} href={`/items/${c.id}`}
-                      className="flex items-center gap-2 border-b border-line/60 py-1 last:border-b-0">
-                  <span className="clamp-1 flex-1 text-[12px] text-ink-2">{c.title}</span>
-                  <PossessionGlyph state={c.possession} size={10} />
-                </Link>
-              ))}
-              <AddChild parentId={project.id} categoryId={project.category_id} onAdded={load} />
-            </div>
           )
-        })()}
-      </Panel>
+        })}
+      </div>
 
-      <Panel id="school" title="School" count={data.school.length}
-             hint="deadlines" emptyLabel="no coursework dated"
-             action={<Link href="/list?category=School" className="text-[10px] text-ink-3">all →</Link>}>
-        {data.school.map(s => (
-          <div key={s.id} className="border-b border-line/60 py-1.5 last:border-b-0">
-            <Link href={`/items/${s.id}`} className="clamp-1 block text-[13px]">{s.title}</Link>
-            {s.planned_date && s.due_date ? (
-              <SlackBar planned={s.planned_date} deadline={s.due_date} today={data.date} compact />
-            ) : (
-              <span className="text-[10px] tnum text-ink-3">
-                {s.due_date ? `due ${mediumLabel(s.due_date)}` : `planned ${mediumLabel(s.planned_date!)}`}
-              </span>
+      {/* ── every project, every task, nothing hidden ── */}
+      <div className="mb-1 flex items-baseline gap-2">
+        <span className="text-[10px] uppercase tracking-wider text-ink-3">
+          {lens === 'all' ? 'All work' : LENSES.find(l => l.value === lens)?.label}
+        </span>
+        <span className="text-[10px] tnum text-ink-3">{shownRows} of {tally.all}</span>
+      </div>
+
+      {groups.map(({ project, rows }) => (
+        <section
+          key={project.id}
+          ref={el => { groupRefs.current[project.id] = el }}
+          className="mb-3 scroll-mt-14"
+        >
+          <div className="flex flex-wrap items-baseline gap-1.5 border-b border-line pb-0.5">
+            <span className="h-3 w-[3px] shrink-0 rounded-full"
+                  style={{ background: project.color ?? 'var(--border-2)' }} />
+            <Link href={`/items/${project.id}`} className="text-[12px] font-medium">
+              {project.title}
+            </Link>
+            <span className="text-[10px] tnum text-ink-3">{project.open}</span>
+            {project.dropped > 0 && (
+              <span className="text-[10px] text-dropped">{project.dropped} stalled</span>
+            )}
+            {project.link && (
+              <a href={project.link} target="_blank" rel="noopener noreferrer"
+                 className="text-[10px] text-mine underline underline-offset-2">open ↗</a>
+            )}
+            {project.waiting_person && (
+              <span className="text-[10px] text-ink-3">waiting on {project.waiting_person.name}</span>
             )}
           </div>
-        ))}
-      </Panel>
 
-      <Panel id="service" title="Service" count={data.contributors.recentDone.length}
-             hint={`${data.contributors.people} people`}
-             emptyLabel="no contributor activity">
-        {data.contributors.recentDone.map(a => (
-          <div key={a.id} className="flex items-center gap-2 border-b border-line/60 py-1.5 last:border-b-0">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-done" />
-            <span className="clamp-1 flex-1 text-[12px]">
-              <span className="text-ink">{a.who}</span>
-              <span className="text-ink-2"> — {a.what}</span>
-            </span>
-            {a.project && <span className="shrink-0 text-[10px] text-ink-3">{a.project}</span>}
-          </div>
-        ))}
-        {data.contributors.outstanding.length > 0 && (
-          <div className="flex flex-wrap gap-1 pt-1.5">
-            {data.contributors.outstanding.map(o => (
-              <span key={o.project}
-                    className="rounded-sm border border-line px-1.5 py-0.5 text-[10px] text-ink-3">
-                {o.project} <span className="tnum text-ink-2">{o.count}</span>
-              </span>
-            ))}
-          </div>
-        )}
-        <p className="pt-1.5 text-[10px] text-ink-3">Portal paused — read-only until it is rebuilt.</p>
-      </Panel>
+          {rows.length === 0 ? (
+            <p className="py-1 text-[11px] text-ink-3">No children yet.</p>
+          ) : (
+            rows.map(c => (
+              <Row key={c.id} child={c} onDone={load} onWait={() => setWaitingTarget(c)} />
+            ))
+          )}
 
-      <Panel id="notes" title="Notes" count={data.notes.length}
-             emptyLabel="inbox empty"
-             action={<Link href="/notes" className="text-[10px] text-ink-3">all →</Link>}>
-        {data.notes.map(n => (
-          <div key={n.id} className="flex items-start gap-2 border-b border-line/60 py-1.5 last:border-b-0">
-            <span className="clamp-2 min-w-0 flex-1 text-[12px] leading-snug text-ink-2">{n.content}</span>
-            <button onClick={() => setNoteTarget(n)}
-                    className="shrink-0 text-[10px] text-mine underline underline-offset-2">
-              → item
-            </button>
-          </div>
-        ))}
-      </Panel>
+          {lens === 'all' && (
+            <AddChild parentId={project.id} categoryId={project.category_id} onAdded={load} />
+          )}
+        </section>
+      ))}
+
+      {groups.length === 0 && (
+        <p className="py-8 text-center text-[13px] text-ink-3">Nothing matches this lens.</p>
+      )}
 
       <WaitingOnSheet
-        item={waitingTarget}
+        item={waitingTarget ? { ...waitingTarget, waiting_on: null } : null}
         people={data.people}
         open={!!waitingTarget}
         onClose={() => setWaitingTarget(null)}
-        onDone={load}
-      />
-      <PromoteNote
-        note={noteTarget}
-        roots={roots}
-        categories={data.categories}
-        open={!!noteTarget}
-        onClose={() => setNoteTarget(null)}
         onDone={load}
       />
     </div>
   )
 }
 
-/**
- * A project at a glance. Ring fill is how much is closed, colour is the
- * category, garnet means something inside has been dropped, and School is a
- * square so coursework is distinguishable without reading the label.
- */
+function TimeBlock({
+  title, when, count, href, children,
+}: {
+  title: string; when: string; count: number; href: string; children: React.ReactNode
+}) {
+  return (
+    <section className="rounded-md border border-line p-2">
+      <div className="mb-1 flex items-baseline gap-2">
+        <h2 className="text-[11px] font-medium uppercase tracking-wider text-ink-2">{title}</h2>
+        <span className="text-[10px] tnum text-ink-3">{count}</span>
+        <span className="text-[10px] text-ink-3">{when}</span>
+        <Link href={href} className="ml-auto text-[10px] text-mine underline underline-offset-2">
+          calendar
+        </Link>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function TodoLine({
+  todo, onToggle, showDay,
+}: {
+  todo: Todo; onToggle: () => void; showDay?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-2 border-b border-line/60 py-1 last:border-b-0">
+      <Check checked={todo.is_complete} onChange={onToggle} label={`Complete ${todo.title}`} />
+      <span className={`clamp-1 flex-1 text-[12px] ${todo.is_complete ? 'text-ink-3 line-through' : ''}`}>
+        {todo.title}
+      </span>
+      <span className="shrink-0 text-[10px] tnum text-ink-3">
+        {showDay ? DAY_NAMES[dayIndex(todo.task_date)].slice(0, 3) : ''}
+        {todo.start_time ? ` ${todo.start_time.slice(0, 5)}` : ''}
+      </span>
+    </div>
+  )
+}
+
+/** One task. Everything it needs, on one line, actionable without leaving. */
+function Row({
+  child, onDone, onWait,
+}: {
+  child: Child; onDone: () => void; onWait: () => void
+}) {
+  const dateLabel =
+    child.planned_date ? mediumLabel(child.planned_date)
+      : child.due_date ? `due ${mediumLabel(child.due_date)}`
+        : null
+
+  return (
+    <div className="flex items-center gap-1.5 border-b border-line/60 py-1 last:border-b-0">
+      <Link href={`/items/${child.id}`} className="clamp-1 min-w-0 flex-1 text-[12.5px]">
+        {child.title}
+      </Link>
+
+      {child.link && (
+        <a href={child.link} target="_blank" rel="noopener noreferrer"
+           className="shrink-0 text-[10px] text-mine">↗</a>
+      )}
+
+      {child.waiting && (
+        <button onClick={onWait}
+                className={`shrink-0 text-[10px] tnum ${
+                  child.possession === 'dropped' ? 'text-dropped' : 'text-ink-3'
+                }`}>
+          {child.waiting}{child.days !== null ? ` ${child.days}d` : ''}
+        </button>
+      )}
+
+      {dateLabel ? (
+        <span className={`shrink-0 text-[10px] tnum ${
+          child.due_date && !child.planned_date ? 'text-dropped' : 'text-ink-2'
+        }`}>
+          {dateLabel}
+        </span>
+      ) : (
+        <QuickDate
+          item={{ id: child.id, planned_date: child.planned_date, status: child.status ?? null }}
+          onDone={onDone}
+        />
+      )}
+
+      <PossessionGlyph state={child.possession} size={10} />
+    </div>
+  )
+}
+
 function Ring({
-  open, total, color, dropped, school, active,
+  open, total, color, dropped, school, dimmed,
 }: {
   open: number; total: number; color: string | null
-  dropped: boolean; school: boolean; active: boolean
+  dropped: boolean; school: boolean; dimmed: boolean
 }) {
-  const r = 14
+  const r = 13
   const circumference = 2 * Math.PI * r
   const doneFraction = total > 0 ? (total - open) / total : 0
   const stroke = dropped ? 'var(--dropped)' : color ?? 'var(--mine)'
 
   return (
-    <span className={`relative grid h-[34px] w-[34px] place-items-center rounded-full ${
-      active ? 'ring-1 ring-mine' : ''
-    }`}>
-      <svg width="34" height="34" viewBox="0 0 36 36" aria-hidden="true">
+    <span className={`relative grid h-[32px] w-[32px] place-items-center ${dimmed ? 'opacity-30' : ''}`}>
+      <svg width="32" height="32" viewBox="0 0 36 36" aria-hidden="true">
         {school ? (
           <>
-            <rect x="4" y="4" width="28" height="28" rx="6" fill="none"
-                  stroke="var(--border-2)" strokeWidth="3" />
-            <rect x="4" y="4" width="28" height="28" rx="6" fill="none"
-                  stroke={stroke} strokeWidth="3"
-                  strokeDasharray={`${112 * doneFraction} 112`} />
+            <rect x="5" y="5" width="26" height="26" rx="6" fill="none" stroke="var(--border-2)" strokeWidth="3" />
+            <rect x="5" y="5" width="26" height="26" rx="6" fill="none" stroke={stroke} strokeWidth="3"
+                  strokeDasharray={`${104 * doneFraction} 104`} />
           </>
         ) : (
           <>
             <circle cx="18" cy="18" r={r} fill="none" stroke="var(--border-2)" strokeWidth="3" />
-            <circle cx="18" cy="18" r={r} fill="none" stroke={stroke} strokeWidth="3"
-                    strokeLinecap="round"
+            <circle cx="18" cy="18" r={r} fill="none" stroke={stroke} strokeWidth="3" strokeLinecap="round"
                     strokeDasharray={`${circumference * doneFraction} ${circumference}`}
                     transform="rotate(-90 18 18)" />
           </>
         )}
       </svg>
-      <span className={`absolute text-[10px] tnum ${dropped ? 'text-dropped' : 'text-ink-2'}`}>
-        {open}
-      </span>
+      <span className={`absolute text-[9px] tnum ${dropped ? 'text-dropped' : 'text-ink-2'}`}>{open}</span>
     </span>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<Spinner label="Loading" />}>
+      <DashboardView />
+    </Suspense>
   )
 }
