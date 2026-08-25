@@ -35,6 +35,18 @@ export interface ItemView extends Item {
  */
 const PENDING_COLUMNS = ['is_group', 'link'] as const
 
+/**
+ * PostgREST rejects an unknown column from its own schema cache with PGRST204
+ * long before Postgres would raise 42703, so checking only the Postgres code
+ * matched nothing and the tolerance never fired. Match either, and require the
+ * column name in the message so an unrelated failure is never swallowed.
+ */
+function pendingColumnIn(error: { code?: string; message?: string } | null) {
+  if (!error) return undefined
+  if (error.code !== '42703' && error.code !== 'PGRST204') return undefined
+  return PENDING_COLUMNS.find(c => (error.message ?? '').includes(c))
+}
+
 export async function insertItems(
   db: ReturnType<typeof createAdminClient>,
   rows: Record<string, unknown>[],
@@ -43,9 +55,7 @@ export async function insertItems(
   for (let attempt = 0; attempt <= PENDING_COLUMNS.length; attempt++) {
     const { data, error } = await db.from('items').insert(payload).select()
     if (!error) return data
-    const missing =
-      error.code === '42703' &&
-      PENDING_COLUMNS.find(c => (error.message ?? '').includes(c))
+    const missing = pendingColumnIn(error)
     if (!missing) throw error
     payload = payload.map(({ [missing]: _dropped, ...rest }) => rest)
   }
@@ -74,9 +84,7 @@ export async function updateItem(
     }
     const { data, error } = await db.from('items').update(payload).eq('id', id).select().single()
     if (!error) return data
-    const missing =
-      error.code === '42703' &&
-      PENDING_COLUMNS.find(c => (error.message ?? '').includes(c))
+    const missing = pendingColumnIn(error)
     if (!missing) throw error
     payload = Object.fromEntries(Object.entries(payload).filter(([k]) => k !== missing))
   }
