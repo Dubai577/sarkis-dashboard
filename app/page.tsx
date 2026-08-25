@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { PossessionGlyph } from '@/components/ui/Possession'
 import { Check, ErrorBanner, Spinner } from '@/components/ui/primitives'
 import { AddChild, QuickDate, WaitingOnSheet } from '@/components/InlineActions'
+import { Drill, type TreeNode } from '@/components/Drill'
 import { dayIndex, DAY_NAMES, mediumLabel } from '@/lib/dates'
 
 /**
@@ -60,6 +61,7 @@ interface Payload {
   people: { id: string; name: string }[]
   notes: { id: string; content: string }[]
   routines: { total: number; done: number }
+  tree: TreeNode[]
   contributors: { recentDone: { id: string; who: string; what: string; project: string | null }[] }
 }
 
@@ -89,6 +91,7 @@ function DashboardView() {
   const [data, setData] = useState<Payload | null>(null)
   const [error, setError] = useState('')
   const [waitingTarget, setWaitingTarget] = useState<Child | null>(null)
+  const [drillRoot, setDrillRoot] = useState<string | null>(null)
   const groupRefs = useRef<Record<string, HTMLElement | null>>({})
 
   const load = useCallback(async () => {
@@ -234,9 +237,9 @@ function DashboardView() {
           return (
             <button
               key={p.id}
-              onClick={() => groupRefs.current[p.id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              onClick={() => setDrillRoot(p.id)}
               className="flex w-[46px] shrink-0 flex-col items-center gap-0.5"
-              title={`${p.title} — jump to it`}
+              title={`${p.title} — open it`}
             >
               <Ring open={p.open} total={p.total} color={p.color}
                     dropped={p.dropped > 0} school={p.isSchool} dimmed={rows === 0} />
@@ -268,7 +271,10 @@ function DashboardView() {
             <Link href={`/items/${project.id}`} className="text-[12px] font-medium">
               {project.title}
             </Link>
-            <span className="text-[10px] tnum text-ink-3">{project.open}</span>
+            <button onClick={() => setDrillRoot(project.id)}
+                    className="text-[10px] tnum text-ink-3 underline underline-offset-2">
+              {project.open} ›
+            </button>
             {project.dropped > 0 && (
               <span className="text-[10px] text-dropped">{project.dropped} stalled</span>
             )}
@@ -284,9 +290,12 @@ function DashboardView() {
           {rows.length === 0 ? (
             <p className="py-1 text-[11px] text-ink-3">No children yet.</p>
           ) : (
-            rows.map(c => (
-              <Row key={c.id} child={c} onDone={load} onWait={() => setWaitingTarget(c)} />
-            ))
+            <div className="flex flex-wrap items-start gap-x-1.5 gap-y-0.5 pt-1">
+              {rows.map(c => (
+                <Chip key={c.id} child={c} lens={lens}
+                      onDone={load} onWait={() => setWaitingTarget(c)} />
+              ))}
+            </div>
           )}
 
           {lens === 'all' && (
@@ -297,6 +306,15 @@ function DashboardView() {
 
       {groups.length === 0 && (
         <p className="py-8 text-center text-[13px] text-ink-3">Nothing matches this lens.</p>
+      )}
+
+      {drillRoot && (
+        <Drill
+          tree={data.tree ?? []}
+          rootId={drillRoot}
+          onClose={() => setDrillRoot(null)}
+          onChanged={load}
+        />
       )}
 
       <WaitingOnSheet
@@ -349,52 +367,70 @@ function TodoLine({
   )
 }
 
-/** One task. Everything it needs, on one line, actionable without leaving. */
-function Row({
-  child, onDone, onWait,
+/**
+ * One task, sized to its own content.
+ *
+ * This used to be a full-width row with the title on flex-1 and the metadata
+ * pinned right. Measured on real data that left an average of 187px of dead
+ * space per row — "Ali" was 14px of text in a 287px box, so 78% of the line
+ * was air, and 47 of 69 rows had over 60px of it. Titles here have a median of
+ * 15 characters, so one-per-line was simply the wrong shape.
+ *
+ * As chips they flow and wrap: three or four short items share a line, and a
+ * long one takes the width it needs and no more. A 473-character title still
+ * behaves, because the chip caps at the container and clamps to one line.
+ */
+function Chip({
+  child, lens, onDone, onWait,
 }: {
-  child: Child; onDone: () => void; onWait: () => void
+  child: Child; lens: Lens; onDone: () => void; onWait: () => void
 }) {
   const dateLabel =
     child.planned_date ? mediumLabel(child.planned_date)
-      : child.due_date ? `due ${mediumLabel(child.due_date)}`
+      : child.due_date ? mediumLabel(child.due_date)
         : null
 
+  const overdue = !!child.due_date && !child.planned_date
+
   return (
-    <div className="flex items-center gap-1.5 border-b border-line/60 py-1 last:border-b-0">
-      <Link href={`/items/${child.id}`} className="clamp-1 min-w-0 flex-1 text-[12.5px]">
+    <span className="inline-flex max-w-full items-center gap-1 rounded-sm border border-line/70 py-[3px] pl-1.5 pr-1 leading-none">
+      <Link href={`/items/${child.id}`} className="clamp-1 min-w-0 text-[12px] leading-tight">
         {child.title}
       </Link>
 
-      {child.link && (
-        <a href={child.link} target="_blank" rel="noopener noreferrer"
-           className="shrink-0 text-[10px] text-mine">↗</a>
+      {dateLabel && (
+        <span className={`shrink-0 text-[9.5px] tnum ${overdue ? 'text-dropped' : 'text-ink-2'}`}>
+          {dateLabel}
+        </span>
       )}
 
       {child.waiting && (
         <button onClick={onWait}
-                className={`shrink-0 text-[10px] tnum ${
+                className={`shrink-0 text-[9.5px] tnum ${
                   child.possession === 'dropped' ? 'text-dropped' : 'text-ink-3'
                 }`}>
-          {child.waiting}{child.days !== null ? ` ${child.days}d` : ''}
+          {child.waiting.split(' ')[0]}{child.days !== null ? ` ${child.days}d` : ''}
         </button>
       )}
 
-      {dateLabel ? (
-        <span className={`shrink-0 text-[10px] tnum ${
-          child.due_date && !child.planned_date ? 'text-dropped' : 'text-ink-2'
-        }`}>
-          {dateLabel}
-        </span>
-      ) : (
+      {child.link && (
+        <a href={child.link} target="_blank" rel="noopener noreferrer"
+           className="shrink-0 text-[9.5px] text-mine">↗</a>
+      )}
+
+      {/* Only where you would actually be assigning dates. Rendering 55 of
+          these at once was most of the clutter it was meant to solve. */}
+      {!dateLabel && lens === 'none' && (
         <QuickDate
           item={{ id: child.id, planned_date: child.planned_date, status: child.status ?? null }}
           onDone={onDone}
         />
       )}
 
-      <PossessionGlyph state={child.possession} size={10} />
-    </div>
+      {child.possession !== 'mine' && (
+        <PossessionGlyph state={child.possession} size={9} />
+      )}
+    </span>
   )
 }
 

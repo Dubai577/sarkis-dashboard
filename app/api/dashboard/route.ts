@@ -206,6 +206,26 @@ export async function GET() {
       // The week's actual rows, so the dashboard can list them rather than
       // showing a count and making you go somewhere else to read it.
       weekTodos: weekRows,
+      /**
+       * The whole tree, flat. Drilling Convent -> department -> tasks needs
+       * grandchildren, and shipping the lot once is cheaper than a request per
+       * level: it is a few hundred short rows.
+       */
+      tree: items.map(i => ({
+        id: i.id,
+        parent_id: i.parent_id,
+        title: i.title,
+        possession: i.possession,
+        planned_date: i.planned_date,
+        due_date: i.due_date,
+        priority: i.priority,
+        status: i.status,
+        link: i.link ?? null,
+        heat: i.heat,
+        color: i.category?.color ?? null,
+        waiting: i.waiting_person?.name ?? null,
+        childCount: items.filter(c => c.parent_id === i.id).length,
+      })),
       projects,
       school,
       notes: notesRes.data ?? [],
