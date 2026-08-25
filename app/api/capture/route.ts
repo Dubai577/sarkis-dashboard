@@ -54,6 +54,11 @@ export async function POST(req: NextRequest) {
 
     if (target === 'item') {
       const insert: Record<string, unknown> = { title: text }
+      // A deliberately-created project is pinned, otherwise it is made and then
+      // immediately invisible on a board that only surfaces what looks hot.
+      if (body.board === 'pinned' || body.board === 'muted' || body.board === 'auto') {
+        insert.board = body.board
+      }
       if (typeof body.parent_id === 'string') insert.parent_id = body.parent_id
       if (typeof body.category_id === 'string') insert.category_id = body.category_id
       if (isIsoDate(typeof body.planned_date === 'string' ? body.planned_date : null)) {
