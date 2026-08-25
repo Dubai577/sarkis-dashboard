@@ -45,6 +45,16 @@ export function ItemActions({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
+  const [title, setTitle] = useState('')
+  const [titleFor, setTitleFor] = useState<string | null>(null)
+
+  // Reset the draft when the sheet opens on a different item, without an
+  // effect: keying off the id means no stale title can be saved onto the wrong
+  // row if the sheet is reopened quickly.
+  if (item && titleFor !== item.id) {
+    setTitleFor(item.id)
+    setTitle(item.title)
+  }
 
   const byId = useMemo(() => new Map(tree.map(n => [n.id, n])), [tree])
 
@@ -75,6 +85,25 @@ export function ItemActions({
 
   if (!item) return null
 
+  /**
+   * Render from the LIVE node, not the snapshot handed in when the sheet
+   * opened. The parent stores the target in state, so after a save its copy is
+   * stale and every field here would keep showing the old value until the sheet
+   * was closed and reopened — including the rename button, which would never
+   * stop offering a rename it had already done.
+   */
+  const live = tree.find(n => n.id === item.id)
+  const current: ActionTarget = live
+    ? {
+        id: live.id,
+        title: live.title,
+        parent_id: live.parent_id,
+        planned_date: live.planned_date,
+        due_date: live.due_date,
+        status: live.status,
+      }
+    : item
+
   async function patch(body: Record<string, unknown>, close = false) {
     setBusy(true)
     setError('')
@@ -85,6 +114,7 @@ export function ItemActions({
         body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'That did not save.')
+      if (typeof body.title === 'string') setTitle(body.title)
       onDone()
       if (close) onClose()
     } catch (e) {
@@ -94,14 +124,46 @@ export function ItemActions({
     }
   }
 
-  const ongoing = item.status === 'Ongoing'
-  const isProject = !item.parent_id
+  const ongoing = current.status === 'Ongoing'
+  const isProject = !current.parent_id
 
   return (
-    <Sheet open={open} onClose={onClose} title={item.title}>
+    <Sheet open={open} onClose={onClose} title={current.title}>
       {error && <p className="mb-2 text-[12px] text-dropped">{error}</p>}
 
       <div className="space-y-4">
+        {/* ── the name ── */}
+        <section>
+          <span className="mb-1.5 block text-[10px] uppercase tracking-wider text-ink-3">
+            Name
+          </span>
+          <div className="flex gap-1.5">
+            <textarea
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  if (title.trim() && title.trim() !== current.title) patch({ title: title.trim() })
+                }
+              }}
+              rows={2}
+              className={`${inputClass} resize-none text-[13px] leading-snug`}
+            />
+          </div>
+          {title.trim() && title.trim() !== current.title && (
+            <Button
+              variant="primary"
+              full
+              disabled={busy}
+              className="mt-1.5"
+              onClick={() => patch({ title: title.trim() })}
+            >
+              Rename
+            </Button>
+          )}
+        </section>
+
         {/* ── what is it ── */}
         <section>
           <span className="mb-1.5 block text-[10px] uppercase tracking-wider text-ink-3">
@@ -130,7 +192,7 @@ export function ItemActions({
           <p className="mt-1 text-[10px] leading-snug text-ink-3">
             {isProject
               ? 'Top level, and pinned to the board. It becomes a project with departments as soon as you put something under it.'
-              : `Currently under ${byId.get(item.parent_id ?? '')?.title ?? 'something'}.`}
+              : `Currently under ${byId.get(current.parent_id ?? '')?.title ?? 'something'}.`}
           </p>
         </section>
 
@@ -153,7 +215,7 @@ export function ItemActions({
           <input
             type="date"
             disabled={busy}
-            value={item.planned_date ?? ''}
+            value={current.planned_date ?? ''}
             onChange={e => patch({ planned_date: e.target.value || null, status: null })}
             className={inputClass}
           />
@@ -166,14 +228,14 @@ export function ItemActions({
           <input
             type="date"
             disabled={busy}
-            value={item.due_date ?? ''}
+            value={current.due_date ?? ''}
             onChange={e => patch({ due_date: e.target.value || null })}
             className={inputClass}
           />
-          {item.planned_date && item.due_date && (
+          {current.planned_date && current.due_date && (
             <p className="mt-1 text-[10px] text-ink-3">
               {Math.round(
-                (Date.parse(`${item.due_date}T12:00:00Z`) - Date.parse(`${item.planned_date}T12:00:00Z`)) / 86400000,
+                (Date.parse(`${current.due_date}T12:00:00Z`) - Date.parse(`${current.planned_date}T12:00:00Z`)) / 86400000,
               )} days of slack between them.
             </p>
           )}
@@ -216,7 +278,7 @@ export function ItemActions({
                 <span className="h-3 w-[2px] shrink-0 rounded-full"
                       style={{ background: node.color ?? 'var(--border-2)' }} />
                 <span className="clamp-1 flex-1 text-[12px]">{path}</span>
-                {item.parent_id === node.id && (
+                {current.parent_id === node.id && (
                   <span className="shrink-0 text-[10px] text-mine">current</span>
                 )}
               </button>
