@@ -49,6 +49,10 @@ export function Capture({
   const [parentId, setParentId] = useState('')
   const [parentQuery, setParentQuery] = useState('')
   const [childText, setChildText] = useState('')
+  // What the lines under a project are. Departments by default: listing them
+  // at creation time is what you do when carving a project into parts, and a
+  // department made as a plain task cannot be opened or filled afterwards.
+  const [childrenAreGroups, setChildrenAreGroups] = useState(true)
   const [personId, setPersonId] = useState('')
   const [splitInto, setSplitInto] = useState<string[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -164,7 +168,7 @@ export function Capture({
           await fetch('/api/items', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, parent_id: data.item.id }),
+            body: JSON.stringify({ title, parent_id: data.item.id, is_group: childrenAreGroups }),
           })
         }
       }
@@ -234,16 +238,32 @@ export function Capture({
 
         {kind === 'project' && (
           <Field label="What goes under it (optional)">
+            <div className="mb-1.5 flex gap-1">
+              {([[true, 'Departments'], [false, 'Tasks']] as const).map(([value, label]) => (
+                <button
+                  key={label}
+                  onClick={() => setChildrenAreGroups(value)}
+                  className={`flex-1 rounded-md border py-1 text-[11px] ${
+                    childrenAreGroups === value
+                      ? 'border-mine bg-mine-soft text-mine'
+                      : 'border-line text-ink-2'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <textarea
               value={childText}
               onChange={e => setChildText(e.target.value)}
               rows={3}
-              placeholder={'Buildings\nWebsite\nHymns'}
+              placeholder={childrenAreGroups ? 'Buildings\nWebsite\nHymns' : 'Call the plumber\nOrder tiles'}
               className={`${inputClass} resize-none text-[13px] leading-snug`}
             />
             {children.length > 0 && (
               <p className="mt-1 text-[10.5px] leading-snug text-ink-3">
-                {children.length} to create under it: {children.slice(0, 6).join(' · ')}
+                {children.length} {childrenAreGroups ? 'departments' : 'tasks'} under it:{' '}
+                {children.slice(0, 6).join(' · ')}
                 {children.length > 6 ? ' …' : ''}
               </p>
             )}

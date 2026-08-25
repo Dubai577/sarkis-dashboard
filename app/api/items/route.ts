@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { denyUnlessAdmin } from '@/lib/auth/guard'
 import { badRequest, pick, readJson, serverError, validateScalars } from '@/lib/api/http'
-import { loadItemViews, boardItems, areaItems, childrenOf } from '@/lib/db/items'
+import { insertItems, loadItemViews, boardItems, areaItems, childrenOf } from '@/lib/db/items'
 
 const WRITABLE = [
   'parent_id', 'title', 'notes', 'category_id', 'priority', 'status',
   'planned_date', 'due_date', 'start_time', 'end_time', 'sort_order',
-  'board', 'waiting_on', 'waiting_since', 'nudge_after', 'link',
+  'board', 'waiting_on', 'waiting_since', 'nudge_after', 'link', 'is_group',
 ] as const
 
 /**
@@ -87,10 +87,9 @@ export async function POST(req: NextRequest) {
       insert.sort_order = count ?? 0
     }
 
-    const { data, error } = await db.from('items').insert(insert).select().single()
-    if (error) throw error
+    const [item] = (await insertItems(db, [insert])) ?? []
 
-    return NextResponse.json({ item: data }, { status: 201 })
+    return NextResponse.json({ item }, { status: 201 })
   } catch (err) {
     return serverError('items.POST', err)
   }

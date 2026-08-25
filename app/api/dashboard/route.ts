@@ -225,6 +225,9 @@ export async function GET() {
         color: i.category?.color ?? null,
         waiting: i.waiting_person?.name ?? null,
         childCount: items.filter(c => c.parent_id === i.id).length,
+        // Marked a container, or holding one. An empty department has to read
+        // and behave as a department, otherwise it is a task you cannot open.
+        isGroup: i.is_group_view,
       })),
       projects,
       school,

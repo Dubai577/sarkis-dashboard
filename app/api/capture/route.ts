@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { denyUnlessAdmin } from '@/lib/auth/guard'
 import { MAX_TEXT, badRequest, isIsoDate, readJson, serverError } from '@/lib/api/http'
-import { splitPreview } from '@/lib/db/items'
+import { insertItems, splitPreview } from '@/lib/db/items'
 
 /**
  * POST /api/capture — the most-used path in the app.
@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
       if (body.board === 'pinned' || body.board === 'muted' || body.board === 'auto') {
         insert.board = body.board
       }
+      if (body.is_group === true) insert.is_group = true
       if (typeof body.parent_id === 'string') insert.parent_id = body.parent_id
       if (typeof body.category_id === 'string') insert.category_id = body.category_id
       if (isIsoDate(typeof body.planned_date === 'string' ? body.planned_date : null)) {
@@ -69,8 +70,8 @@ export async function POST(req: NextRequest) {
         insert.waiting_since = new Date().toISOString().slice(0, 10)
       }
 
-      const { data, error } = await db.from('items').insert(insert).select().single()
-      if (error) throw error
+      const [data] = (await insertItems(db, [insert])) ?? []
+      if (!data) throw new Error('The item did not come back from the insert.')
 
       if (typeof body.waiting_on === 'string') {
         await db.from('item_people')

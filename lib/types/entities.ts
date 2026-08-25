@@ -67,6 +67,19 @@ export interface Item {
   archived_at: string | null
   /** Where the work actually happens: admin portal, shared doc, form. */
   link: string | null
+  /**
+   * Container by intent, not by accident of content.
+   *
+   * "Is this a project?" used to be answered by counting children, which is
+   * true of imported data and false of anything you create: a department made
+   * empty rendered as a task with no way to open and fill it, and a project
+   * demoted itself to a task when its last child was archived. Display ORs
+   * this with having children, so it only ever adds.
+   *
+   * Optional on the type because migration 015 is applied by hand — before it
+   * runs, reads yield undefined and the child count still decides.
+   */
+  is_group?: boolean
 
   waiting_on: Uuid | null
   waiting_since: IsoDate | null

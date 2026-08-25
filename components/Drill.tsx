@@ -36,6 +36,12 @@ export interface TreeNode {
   color: string | null
   waiting: string | null
   childCount: number
+  /**
+   * A container: marked as one, or holding something. Empty ones must still
+   * open — a department created with nothing in it is exactly the thing you
+   * need to walk into and fill.
+   */
+  isGroup?: boolean
 }
 
 const PRIORITY_RANK: Record<string, number> = { Urgent: 0, Soon: 1, Whenever: 2, 'N/A': 3 }
@@ -61,6 +67,13 @@ export function urgencyRank(n: TreeNode, now: string): number {
   score -= n.heat / 100
   return score
 }
+
+/**
+ * Container or leaf. `isGroup` is the recorded intent; the child count is the
+ * fallback for rows created before migration 015, and for anything that became
+ * a container by being filled rather than by being declared one.
+ */
+export const isGroup = (n: TreeNode): boolean => n.isGroup === true || n.childCount > 0
 
 export function Drill({
   tree,
@@ -206,9 +219,9 @@ export function Drill({
                         </svg>
                       )}
                     </button>
-                    {n.childCount > 0 ? (
+                    {isGroup(n) ? (
                       <button onClick={() => open(i, n.id)}
-                              className="clamp-1 min-w-0 flex-1 text-left text-[12px]">
+                              className="clamp-1 min-w-0 flex-1 text-left text-[12px] font-medium">
                         {n.title}
                         <span className="ml-1 text-[9px] tnum text-ink-3">{n.childCount}</span>
                       </button>
@@ -236,7 +249,7 @@ export function Drill({
                     />
 
                     {n.possession !== 'mine' && <PossessionGlyph state={n.possession} size={9} />}
-                    {n.childCount > 0 && <span className="shrink-0 text-[10px] text-ink-3">›</span>}
+                    {isGroup(n) && <span className="shrink-0 text-[10px] text-ink-3">›</span>}
                   </div>
                 )
               })

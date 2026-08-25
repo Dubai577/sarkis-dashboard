@@ -20,6 +20,36 @@ export interface ItemView extends Item {
   category: Category | null
   waiting_person: Pick<Person, 'id' | 'name'> | null
   people: { id: Uuid; name: string; relation: string }[]
+  /** Marked a container, or holding something. Either makes it one. */
+  is_group_view: boolean
+}
+
+/**
+ * Columns that exist in the code before they exist in the database, because
+ * migrations here are applied by hand and a deploy can land first.
+ *
+ * Threading `link` into a write and shipping ahead of migration 014 took every
+ * item read down at once. Rather than rely on remembering the order, an insert
+ * that trips over a not-yet-created column drops it and retries: the row still
+ * lands, the flag is simply not recorded until the migration runs.
+ */
+const PENDING_COLUMNS = ['is_group', 'link'] as const
+
+export async function insertItems(
+  db: ReturnType<typeof createAdminClient>,
+  rows: Record<string, unknown>[],
+) {
+  let payload = rows
+  for (let attempt = 0; attempt <= PENDING_COLUMNS.length; attempt++) {
+    const { data, error } = await db.from('items').insert(payload).select()
+    if (!error) return data
+    const missing =
+      error.code === '42703' &&
+      PENDING_COLUMNS.find(c => (error.message ?? '').includes(c))
+    if (!missing) throw error
+    payload = payload.map(({ [missing]: _dropped, ...rest }) => rest)
+  }
+  throw new Error('items insert failed after dropping every pending column')
 }
 
 /**
@@ -105,6 +135,7 @@ export async function loadItemViews(opts: {
       heat,
       band: heatBand(heat),
       child_count: childCount.get(r.id) ?? 0,
+      is_group_view: r.is_group === true || (childCount.get(r.id) ?? 0) > 0,
       open_child_count: open,
       blocked_child_count: blocked,
       category: r.category_id ? catById.get(r.category_id) ?? null : null,
@@ -127,7 +158,7 @@ export function boardItems(views: ItemView[]): ItemView[] {
     if (v.parent_id) return false
     if (v.board === 'muted') return false
     if (v.board === 'pinned') return true
-    return v.child_count > 0
+    return v.is_group_view
   })
 }
 

@@ -126,6 +126,10 @@ export function ItemActions({
 
   const ongoing = current.status === 'Ongoing'
   const isProject = !current.parent_id
+  // Recorded intent first, then the fallback: something holding children is a
+  // container whether or not anyone ever said so.
+  const holds = live ? live.isGroup === true || live.childCount > 0 : false
+  const canUnmark = live ? live.childCount === 0 : false
 
   return (
     <Sheet open={open} onClose={onClose} title={current.title}>
@@ -191,8 +195,31 @@ export function ItemActions({
           </div>
           <p className="mt-1 text-[10px] leading-snug text-ink-3">
             {isProject
-              ? 'Top level, and pinned to the board. It becomes a project with departments as soon as you put something under it.'
+              ? 'Top level, and pinned to the board.'
               : `Currently under ${byId.get(current.parent_id ?? '')?.title ?? 'something'}.`}
+          </p>
+
+          {/*
+            Being a container is a separate fact from being top level. A
+            department sits under a project and still holds tasks; without this
+            it could only become one by accident, once something happened to be
+            filed into it.
+          */}
+          <button
+            disabled={busy || (holds && !canUnmark)}
+            onClick={() => patch({ is_group: !holds })}
+            className={`mt-1.5 w-full rounded-md border py-1.5 text-[11.5px] ${
+              holds ? 'border-mine bg-mine-soft text-mine' : 'border-line text-ink-2'
+            } ${holds && !canUnmark ? 'opacity-70' : ''}`}
+          >
+            {holds ? 'Holds other things — open it to add' : 'Make it hold other things'}
+          </button>
+          <p className="mt-1 text-[10px] leading-snug text-ink-3">
+            {holds && !canUnmark
+              ? `It already holds ${live?.childCount}. Move those out first to make it a plain task.`
+              : holds
+                ? 'Shows as a department you can open, even while it is empty.'
+                : 'Turns it into a department or sub-project: openable, and things can be filed under it.'}
           </p>
         </section>
 
