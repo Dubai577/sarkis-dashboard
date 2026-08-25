@@ -39,11 +39,14 @@ update items p
 commit;
 
 select
-  count(*) filter (where is_group)                                as marked_groups,
-  count(*) filter (where is_group and not exists
-    (select 1 from items c where c.parent_id = items.id))         as empty_groups,
-  count(*)                                                        as total
-from items;
+  count(*) filter (where is_group)                       as marked_groups,
+  count(*) filter (where is_group and child_count = 0)   as empty_groups,
+  count(*)                                               as total
+from (
+  select i.is_group,
+         (select count(*) from items c where c.parent_id = i.id) as child_count
+  from   items i
+) s;
 
 select column_name, data_type, column_default
 from   information_schema.columns
