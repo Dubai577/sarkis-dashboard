@@ -5,8 +5,9 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { PossessionGlyph } from '@/components/ui/Possession'
 import { Check, ErrorBanner, Spinner } from '@/components/ui/primitives'
-import { AddChild, QuickDate, WaitingOnSheet } from '@/components/InlineActions'
+import { AddChild, WaitingOnSheet } from '@/components/InlineActions'
 import { Drill, type TreeNode } from '@/components/Drill'
+import { ItemActions, ActionChip, type ActionTarget } from '@/components/ItemActions'
 import { dayIndex, DAY_NAMES, mediumLabel } from '@/lib/dates'
 
 /**
@@ -92,6 +93,7 @@ function DashboardView() {
   const [error, setError] = useState('')
   const [waitingTarget, setWaitingTarget] = useState<Child | null>(null)
   const [drillRoot, setDrillRoot] = useState<string | null>(null)
+  const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null)
   const groupRefs = useRef<Record<string, HTMLElement | null>>({})
 
   const load = useCallback(async () => {
@@ -292,8 +294,9 @@ function DashboardView() {
           ) : (
             <div className="flex flex-wrap items-start gap-x-1.5 gap-y-0.5 pt-1">
               {rows.map(c => (
-                <Chip key={c.id} child={c} lens={lens}
-                      onDone={load} onWait={() => setWaitingTarget(c)} />
+                <Chip key={c.id} child={c} parentId={project.id}
+                      onAction={t => setActionTarget(t)}
+                      onWait={() => setWaitingTarget(c)} />
               ))}
             </div>
           )}
@@ -307,6 +310,14 @@ function DashboardView() {
       {groups.length === 0 && (
         <p className="py-8 text-center text-[13px] text-ink-3">Nothing matches this lens.</p>
       )}
+
+      <ItemActions
+        item={actionTarget}
+        tree={data.tree ?? []}
+        open={!!actionTarget}
+        onClose={() => setActionTarget(null)}
+        onDone={load}
+      />
 
       {drillRoot && (
         <Drill
@@ -381,28 +392,19 @@ function TodoLine({
  * behaves, because the chip caps at the container and clamps to one line.
  */
 function Chip({
-  child, lens, onDone, onWait,
+  child, parentId, onAction, onWait,
 }: {
-  child: Child; lens: Lens; onDone: () => void; onWait: () => void
+  child: Child
+  parentId: string
+  onAction: (t: ActionTarget) => void
+  onWait: () => void
 }) {
-  const dateLabel =
-    child.planned_date ? mediumLabel(child.planned_date)
-      : child.due_date ? mediumLabel(child.due_date)
-        : null
-
-  const overdue = !!child.due_date && !child.planned_date
-
   return (
     <span className="inline-flex max-w-full items-center gap-1 rounded-sm border border-line/70 py-[3px] pl-1.5 pr-1 leading-none">
       <Link href={`/items/${child.id}`} className="clamp-1 min-w-0 text-[12px] leading-tight">
         {child.title}
       </Link>
 
-      {dateLabel && (
-        <span className={`shrink-0 text-[9.5px] tnum ${overdue ? 'text-dropped' : 'text-ink-2'}`}>
-          {dateLabel}
-        </span>
-      )}
 
       {child.waiting && (
         <button onClick={onWait}
@@ -418,14 +420,20 @@ function Chip({
            className="shrink-0 text-[9.5px] text-mine">↗</a>
       )}
 
-      {/* Only where you would actually be assigning dates. Rendering 55 of
-          these at once was most of the clutter it was meant to solve. */}
-      {!dateLabel && lens === 'none' && (
-        <QuickDate
-          item={{ id: child.id, planned_date: child.planned_date, status: child.status ?? null }}
-          onDone={onDone}
-        />
-      )}
+      {/* One trigger, always present: it shows the current date state and
+          opens everything you can decide about the item. */}
+      <ActionChip
+        item={{
+          id: child.id, title: child.title, parent_id: parentId,
+          planned_date: child.planned_date, due_date: child.due_date,
+          status: child.status ?? null,
+        }}
+        onOpen={() => onAction({
+          id: child.id, title: child.title, parent_id: parentId,
+          planned_date: child.planned_date, due_date: child.due_date,
+          status: child.status ?? null,
+        })}
+      />
 
       {child.possession !== 'mine' && (
         <PossessionGlyph state={child.possession} size={9} />

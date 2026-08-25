@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { PossessionGlyph } from '@/components/ui/Possession'
-import { AddChild, QuickDate } from '@/components/InlineActions'
+import { AddChild } from '@/components/InlineActions'
+import { ItemActions, ActionChip, type ActionTarget } from '@/components/ItemActions'
 import { MoveSheet } from '@/components/MoveSheet'
 import { Button } from '@/components/ui/primitives'
 import { mediumLabel, today as todayIso } from '@/lib/dates'
@@ -77,6 +78,7 @@ export function Drill({
   const [moveOpen, setMoveOpen] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [draftName, setDraftName] = useState('')
+  const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null)
   const now = todayIso()
 
   const toggle = (id: string) =>
@@ -224,18 +226,14 @@ export function Drill({
                       </span>
                     )}
 
-                    {date ? (
-                      <span className={`shrink-0 text-[9.5px] tnum ${late ? 'text-dropped' : 'text-ink-2'}`}>
-                        {mediumLabel(date)}
-                      </span>
-                    ) : n.status === 'Ongoing' ? (
-                      <span className="shrink-0 text-[9.5px] text-theirs">ongoing</span>
-                    ) : (
-                      <QuickDate
-                        item={{ id: n.id, planned_date: n.planned_date, status: n.status }}
-                        onDone={onChanged}
-                      />
-                    )}
+                    <ActionChip
+                      item={{ id: n.id, title: n.title, parent_id: n.parent_id,
+                              planned_date: n.planned_date, due_date: n.due_date, status: n.status }}
+                      onOpen={() => setActionTarget({
+                        id: n.id, title: n.title, parent_id: n.parent_id,
+                        planned_date: n.planned_date, due_date: n.due_date, status: n.status,
+                      })}
+                    />
 
                     {n.possession !== 'mine' && <PossessionGlyph state={n.possession} size={9} />}
                     {n.childCount > 0 && <span className="shrink-0 text-[10px] text-ink-3">›</span>}
@@ -258,6 +256,14 @@ export function Drill({
           </Button>
         </div>
       )}
+
+      <ItemActions
+        item={actionTarget}
+        tree={tree}
+        open={!!actionTarget}
+        onClose={() => setActionTarget(null)}
+        onDone={onChanged}
+      />
 
       <MoveSheet
         open={moveOpen}
