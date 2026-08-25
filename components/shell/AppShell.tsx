@@ -22,6 +22,7 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle'
 const PRIMARY = [
   { href: '/', label: 'Home', icon: HomeIcon },
   { href: '/calendar', label: 'Calendar', icon: CalendarIcon },
+  { href: '/grid', label: 'Grid', icon: GridIcon },
   { href: '/projects', label: 'Projects', icon: StackIcon },
   { href: '/notes', label: 'Notes', icon: NoteIcon },
 ]
@@ -215,6 +216,15 @@ function HomeIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
       <path d="M3 10.5L12 4l9 6.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function GridIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="1.5" />
+      <path d="M3 9.5h18M3 15h18M9 4v16" strokeLinecap="round" />
     </svg>
   )
 }
