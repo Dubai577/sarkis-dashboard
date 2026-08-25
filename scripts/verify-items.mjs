@@ -69,7 +69,17 @@ console.log('\n── the tree ──')
 const roots = items.filter(i => !i.parent_id)
 const children = items.filter(i => i.parent_id)
 check('roots', roots.length >= 13, true)
-check('children', children.length, sarkis.length + schoolMigrated)
+/**
+ * The migration's rows must still be children — but the app keeps adding items
+ * afterwards, so a total is the wrong assertion. This checked
+ * `children === sarkis + school` and started failing the moment 55 items were
+ * imported, which is the third time this script has reported its own staleness
+ * as a data fault. Assert the invariant, not the census.
+ */
+check('every migrated sarkis row is still a child',
+  items.filter(i => i.legacy_sarkis_id && i.parent_id).length, sarkis.length)
+check('children is at least what the migration created',
+  children.length >= sarkis.length + schoolMigrated, true)
 check('migrated from sarkis_tasks', items.filter(i => i.legacy_sarkis_id).length, sarkis.length)
 check('carrying a portal project id', items.filter(i => i.legacy_project_id).length, projects.length)
 
