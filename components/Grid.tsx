@@ -69,6 +69,9 @@ export function Grid() {
   const [saving, setSaving] = useState(0)
   const [newTitle, setNewTitle] = useState('')
   const [newParent, setNewParent] = useState('')
+  // Which Under dropdown is being used. 160 rows x 160 options is 25k option
+  // elements; only the one in play renders its full list.
+  const [openParent, setOpenParent] = useState<string | null>(null)
 
   const titleRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
@@ -113,14 +116,34 @@ export function Grid() {
     return d
   }, [byId])
 
-  /** Anything that can hold something — the move targets. */
+  /**
+   * Every row is a possible parent, not just the ones already holding things.
+   * Restricting this to known containers meant a department created empty
+   * could never receive anything — the exact dead end that made listing
+   * departments useless. A spreadsheet lets you put anything under anything.
+   */
   const groups = useMemo(
     () => rows
-      .filter(r => r.is_group_view || r.child_count > 0 || !r.parent_id)
       .map(r => ({ id: r.id, label: [pathOf(r), r.title].filter(Boolean).join(' / ') }))
       .sort((a, b) => a.label.localeCompare(b.label)),
     [rows, pathOf],
   )
+
+  /** Its own descendants are not valid parents: that would detach the subtree. */
+  const descendantsOf = useCallback((id: string): Set<string> => {
+    const out = new Set<string>([id])
+    let grew = true
+    while (grew) {
+      grew = false
+      for (const r of rows) {
+        if (r.parent_id && out.has(r.parent_id) && !out.has(r.id)) {
+          out.add(r.id)
+          grew = true
+        }
+      }
+    }
+    return out
+  }, [rows])
 
   /**
    * Default order is the tree, depth-first, so a project and its departments
@@ -377,13 +400,20 @@ export function Grid() {
                   <td className={cell}>
                     <select
                       value={r.parent_id ?? ''}
+                      onFocus={() => setOpenParent(r.id)}
                       onChange={e => patch(r.id, { parent_id: e.target.value || null })}
                       className={field}
                     >
                       <option value="">— top level —</option>
-                      {groups.filter(g => g.id !== r.id).map(g => (
-                        <option key={g.id} value={g.id}>{g.label}</option>
-                      ))}
+                      {openParent === r.id
+                        ? groups
+                            .filter(g => !descendantsOf(r.id).has(g.id))
+                            .map(g => <option key={g.id} value={g.id}>{g.label}</option>)
+                        : r.parent_id && (
+                            <option value={r.parent_id}>
+                              {groups.find(g => g.id === r.parent_id)?.label ?? '…'}
+                            </option>
+                          )}
                     </select>
                   </td>
 
