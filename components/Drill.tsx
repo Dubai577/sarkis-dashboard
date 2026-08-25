@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { PossessionGlyph } from '@/components/ui/Possession'
 import { AddChild, QuickDate } from '@/components/InlineActions'
+import { MoveSheet } from '@/components/MoveSheet'
+import { Button } from '@/components/ui/primitives'
 import { mediumLabel, today as todayIso } from '@/lib/dates'
 
 /**
@@ -71,7 +73,30 @@ export function Drill({
   onChanged: () => void
 }) {
   const [path, setPath] = useState<string[]>([rootId])
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [moveOpen, setMoveOpen] = useState(false)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [draftName, setDraftName] = useState('')
   const now = todayIso()
+
+  const toggle = (id: string) =>
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+
+  async function rename(id: string) {
+    const title = draftName.trim()
+    setRenaming(null)
+    if (!title) return
+    await fetch(`/api/items/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    })
+    onChanged()
+  }
 
   const byId = useMemo(() => new Map(tree.map(n => [n.id, n])), [tree])
   const childrenOf = useMemo(() => {
@@ -124,9 +149,28 @@ export function Drill({
             <div className="mb-1 flex items-baseline gap-1.5">
               <span className="h-3 w-[3px] rounded-full"
                     style={{ background: level.parent.color ?? 'var(--border-2)' }} />
-              <Link href={`/items/${level.parent.id}`} className="text-[12px] font-medium">
-                {level.parent.title}
-              </Link>
+              {renaming === level.parent.id ? (
+                <input
+                  autoFocus
+                  value={draftName}
+                  onChange={e => setDraftName(e.target.value)}
+                  onBlur={() => rename(level.parent.id)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') rename(level.parent.id)
+                    if (e.key === 'Escape') setRenaming(null)
+                  }}
+                  className="min-w-0 flex-1 rounded-sm border border-mine/60 bg-surface-2 px-1 py-px text-[12px]"
+                />
+              ) : (
+                <button
+                  onDoubleClick={() => { setRenaming(level.parent.id); setDraftName(level.parent.title) }}
+                  onClick={() => { setRenaming(level.parent.id); setDraftName(level.parent.title) }}
+                  className="text-[12px] font-medium"
+                  title="Tap to rename"
+                >
+                  {level.parent.title}
+                </button>
+              )}
               <span className="text-[10px] tnum text-ink-3">{level.rows.length}</span>
               {level.parent.link && (
                 <a href={level.parent.link} target="_blank" rel="noopener noreferrer"
@@ -145,7 +189,21 @@ export function Drill({
                   <div key={n.id}
                        className={`flex items-center gap-1.5 border-b border-line/60 py-1 last:border-b-0 ${
                          isOpen ? 'bg-surface-2' : ''
-                       }`}>
+                       } ${selected.has(n.id) ? 'bg-mine-soft' : ''}`}>
+                    <button
+                      onClick={() => toggle(n.id)}
+                      aria-label={`Select ${n.title}`}
+                      className={`grid h-[15px] w-[15px] shrink-0 place-items-center rounded-[4px] border ${
+                        selected.has(n.id) ? 'border-mine bg-mine' : 'border-ink-3'
+                      }`}
+                    >
+                      {selected.has(n.id) && (
+                        <svg width="9" height="9" viewBox="0 0 12 12" aria-hidden="true">
+                          <path d="M2.5 6.2l2.3 2.3 4.7-5" fill="none" stroke="var(--bg)"
+                                strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </button>
                     {n.childCount > 0 ? (
                       <button onClick={() => open(i, n.id)}
                               className="clamp-1 min-w-0 flex-1 text-left text-[12px]">
@@ -190,6 +248,25 @@ export function Drill({
           </section>
         ))}
       </div>
+
+      {selected.size > 0 && (
+        <div className="flex items-center gap-2 border-t border-line bg-surface px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))]">
+          <span className="text-[12px] tnum text-ink-2">{selected.size} selected</span>
+          <button onClick={() => setSelected(new Set())} className="text-[11px] text-ink-3">clear</button>
+          <Button variant="primary" className="ml-auto" onClick={() => setMoveOpen(true)}>
+            Move to…
+          </Button>
+        </div>
+      )}
+
+      <MoveSheet
+        open={moveOpen}
+        ids={[...selected]}
+        tree={tree}
+        suggestedParent={levels[levels.length - 1]?.parent ?? null}
+        onClose={() => setMoveOpen(false)}
+        onMoved={() => { setSelected(new Set()); onChanged() }}
+      />
     </div>
   )
 }
