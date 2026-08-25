@@ -130,6 +130,7 @@ export function ItemActions({
   // container whether or not anyone ever said so.
   const holds = live ? live.isGroup === true || live.childCount > 0 : false
   const canUnmark = live ? live.childCount === 0 : false
+  const shape: 'project' | 'sub' | 'task' = isProject ? 'project' : holds ? 'sub' : 'task'
 
   return (
     <Sheet open={open} onClose={onClose} title={current.title}>
@@ -168,58 +169,48 @@ export function ItemActions({
           )}
         </section>
 
-        {/* ── what is it ── */}
+        {/*
+          ── what is it ──
+
+          Two facts decide the shape of a thing: whether it holds others, and
+          what it sits under. Asking for them separately meant reasoning about
+          the model instead of the work, so the three shapes are named outright
+          and each one sets both fields.
+        */}
         <section>
           <span className="mb-1.5 block text-[10px] uppercase tracking-wider text-ink-3">
             What is it
           </span>
-          <div className="flex gap-1.5">
-            <Button
-              variant={isProject ? 'primary' : 'quiet'}
-              disabled={busy}
-              onClick={() => patch({ parent_id: null, board: 'pinned' })}
-              className="flex-1"
-            >
-              A project
-            </Button>
-            <Button
-              variant={!isProject ? 'primary' : 'quiet'}
-              disabled={busy}
-              onClick={() => {
-                document.getElementById('move-under')?.scrollIntoView({ behavior: 'smooth' })
-              }}
-              className="flex-1"
-            >
-              A task under…
-            </Button>
+          <div className="flex gap-1">
+            {([
+              ['project', 'Its own project'],
+              ['sub', 'A sub-project'],
+              ['task', 'A task'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                disabled={busy || (value === 'task' && holds && !canUnmark)}
+                onClick={() => {
+                  if (value === 'project') return patch({ parent_id: null, is_group: true, board: 'pinned' })
+                  patch({ is_group: value === 'sub' })
+                  document.getElementById('move-under')?.scrollIntoView({ behavior: 'smooth' })
+                }}
+                className={`flex-1 rounded-md border py-1.5 text-[11.5px] ${
+                  shape === value ? 'border-mine bg-mine-soft text-mine' : 'border-line text-ink-2'
+                } ${value === 'task' && holds && !canUnmark ? 'opacity-50' : ''}`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
           <p className="mt-1 text-[10px] leading-snug text-ink-3">
-            {isProject
-              ? 'Top level, and pinned to the board.'
-              : `Currently under ${byId.get(current.parent_id ?? '')?.title ?? 'something'}.`}
-          </p>
-
-          {/*
-            Being a container is a separate fact from being top level. A
-            department sits under a project and still holds tasks; without this
-            it could only become one by accident, once something happened to be
-            filed into it.
-          */}
-          <button
-            disabled={busy || (holds && !canUnmark)}
-            onClick={() => patch({ is_group: !holds })}
-            className={`mt-1.5 w-full rounded-md border py-1.5 text-[11.5px] ${
-              holds ? 'border-mine bg-mine-soft text-mine' : 'border-line text-ink-2'
-            } ${holds && !canUnmark ? 'opacity-70' : ''}`}
-          >
-            {holds ? 'Holds other things — open it to add' : 'Make it hold other things'}
-          </button>
-          <p className="mt-1 text-[10px] leading-snug text-ink-3">
-            {holds && !canUnmark
-              ? `It already holds ${live?.childCount}. Move those out first to make it a plain task.`
-              : holds
-                ? 'Shows as a department you can open, even while it is empty.'
-                : 'Turns it into a department or sub-project: openable, and things can be filed under it.'}
+            {holds && !canUnmark && shape !== 'project'
+              ? `It holds ${live?.childCount}, so it cannot be a plain task — move those out first.`
+              : shape === 'project'
+                ? 'Top level and pinned. Put departments or tasks under it.'
+                : shape === 'sub'
+                  ? `A department under ${byId.get(current.parent_id ?? '')?.title ?? '— pick one below'}. It can hold its own tasks.`
+                  : `Under ${byId.get(current.parent_id ?? '')?.title ?? '— pick one below'}. Pick a department below and it is a task under a sub-project.`}
           </p>
         </section>
 
@@ -286,8 +277,11 @@ export function ItemActions({
         {/* ── move it under something ── */}
         <section id="move-under">
           <span className="mb-1.5 block text-[10px] uppercase tracking-wider text-ink-3">
-            Move under
+            Under
           </span>
+          <p className="mb-1.5 text-[10px] leading-snug text-ink-3">
+            A project puts it one level down. A department puts it two.
+          </p>
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}

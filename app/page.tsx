@@ -270,9 +270,26 @@ function DashboardView() {
           <div className="flex flex-wrap items-baseline gap-1.5 border-b border-line pb-0.5">
             <span className="h-3 w-[3px] shrink-0 rounded-full"
                   style={{ background: project.color ?? 'var(--border-2)' }} />
-            <Link href={`/items/${project.id}`} className="text-[12px] font-medium">
+            <button
+              onClick={() => setActionTarget({
+                id: project.id, title: project.title, parent_id: null,
+                planned_date: null, due_date: null, status: null,
+              })}
+              className="text-[12px] font-medium"
+            >
               {project.title}
-            </Link>
+            </button>
+            <button
+              onClick={() => setActionTarget({
+                id: project.id, title: project.title, parent_id: null,
+                planned_date: null, due_date: null, status: null,
+              })}
+              aria-label={`Edit ${project.title}`}
+              title="Edit this project"
+              className="text-[10px] leading-none text-ink-3 hover:text-mine"
+            >
+              ✎
+            </button>
             <button onClick={() => setDrillRoot(project.id)}
                     className="text-[10px] tnum text-ink-3 underline underline-offset-2">
               {project.open} ›
@@ -399,11 +416,26 @@ function Chip({
   onAction: (t: ActionTarget) => void
   onWait: () => void
 }) {
+  const target: ActionTarget = {
+    id: child.id, title: child.title, parent_id: parentId,
+    planned_date: child.planned_date, due_date: child.due_date,
+    status: child.status ?? null,
+  }
   return (
     <span className="inline-flex max-w-full items-center gap-1 rounded-sm border border-line/70 py-[3px] pl-1.5 pr-1 leading-none">
-      <Link href={`/items/${child.id}`} className="clamp-1 min-w-0 text-[12px] leading-tight">
+      {/*
+        The title used to be a link to the item's own page, which is the one
+        thing this dashboard exists to avoid: you came here to see everything
+        at once and it sent you somewhere showing one thing. It opens the
+        editor in place instead. The pencil is the same action, said out loud,
+        because a title that happens to be clickable is not an affordance.
+      */}
+      <button
+        onClick={() => onAction(target)}
+        className="clamp-1 min-w-0 text-left text-[12px] leading-tight"
+      >
         {child.title}
-      </Link>
+      </button>
 
 
       {child.waiting && (
@@ -420,20 +452,17 @@ function Chip({
            className="shrink-0 text-[9.5px] text-mine">↗</a>
       )}
 
-      {/* One trigger, always present: it shows the current date state and
-          opens everything you can decide about the item. */}
-      <ActionChip
-        item={{
-          id: child.id, title: child.title, parent_id: parentId,
-          planned_date: child.planned_date, due_date: child.due_date,
-          status: child.status ?? null,
-        }}
-        onOpen={() => onAction({
-          id: child.id, title: child.title, parent_id: parentId,
-          planned_date: child.planned_date, due_date: child.due_date,
-          status: child.status ?? null,
-        })}
-      />
+      <button
+        onClick={() => onAction(target)}
+        aria-label={`Edit ${child.title}`}
+        title="Edit — what it is, when it is due, where it lives"
+        className="shrink-0 text-[10px] leading-none text-ink-3 hover:text-mine"
+      >
+        ✎
+      </button>
+
+      {/* Shows the current date state, and opens the same editor. */}
+      <ActionChip item={target} onOpen={() => onAction(target)} />
 
       {child.possession !== 'mine' && (
         <PossessionGlyph state={child.possession} size={9} />
