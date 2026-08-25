@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { denyUnlessAdmin } from '@/lib/auth/guard'
 import { badRequest, pick, readJson, serverError, validateScalars } from '@/lib/api/http'
-import { loadItemViews, childrenOf, ancestorsOf, splitPreview } from '@/lib/db/items'
+import { loadItemViews, childrenOf, ancestorsOf, splitPreview, updateItem } from '@/lib/db/items'
 import { today as todayIso } from '@/lib/dates'
 
 const WRITABLE = [
@@ -106,8 +106,7 @@ export async function PATCH(
       }
     }
 
-    const { data, error } = await db.from('items').update(patch).eq('id', id).select().single()
-    if (error) throw error
+    const data = await updateItem(db, id, patch)
     if (!data) return NextResponse.json({ error: 'Not found.' }, { status: 404 })
 
     /**

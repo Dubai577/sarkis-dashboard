@@ -72,6 +72,8 @@ export function Grid() {
   // Which Under dropdown is being used. 160 rows x 160 options is 25k option
   // elements; only the one in play renders its full list.
   const [openParent, setOpenParent] = useState<string | null>(null)
+  // A row created by the + button, so the cursor lands in it ready to type.
+  const [focusNext, setFocusNext] = useState<string | null>(null)
 
   const titleRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
@@ -87,6 +89,15 @@ export function Grid() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (!focusNext) return
+    const el = titleRefs.current[focusNext]
+    if (!el) return
+    el.focus()
+    el.select()
+    setFocusNext(null)
+  }, [focusNext, rows])
 
   const byId = useMemo(() => new Map(rows.map(r => [r.id, r])), [rows])
 
@@ -229,6 +240,36 @@ export function Grid() {
       if (title.trim()) patch(id, { title: title.trim() })
     }, 600)
   }, [patch])
+
+  /**
+   * Add something under this row. Adding a sub-project was the one thing the
+   * app made hardest: capture, choose a kind, find the parent in a dropdown of
+   * 160. It is one click on the row you want it under.
+   *
+   * The parent is marked a container in the same breath — that is what the
+   * click means, and it is the difference between a department you can fill
+   * and one that reads as a task.
+   */
+  async function addChild(parentId: string) {
+    setSaving(s => s + 1)
+    try {
+      const res = await fetch('/api/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'New item', parent_id: parentId }),
+      })
+      const { item } = await res.json().catch(() => ({ item: null }))
+      await fetch(`/api/items/${parentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_group: true }),
+      })
+      await load()
+      if (item?.id) setFocusNext(item.id)
+    } finally {
+      setSaving(s => s - 1)
+    }
+  }
 
   async function addRow() {
     const title = newTitle.trim()
@@ -394,6 +435,14 @@ export function Grid() {
                       {r.possession === 'dropped' && (
                         <span className="shrink-0 text-[9px] text-dropped">!</span>
                       )}
+                      <button
+                        onClick={() => addChild(r.id)}
+                        title="Add something under this"
+                        aria-label={`Add something under ${r.title}`}
+                        className="shrink-0 rounded-[3px] border border-line px-1 text-[10px] leading-[15px] text-ink-3 hover:border-mine hover:text-mine"
+                      >
+                        +
+                      </button>
                     </div>
                   </td>
 

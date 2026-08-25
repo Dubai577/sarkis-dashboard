@@ -53,6 +53,37 @@ export async function insertItems(
 }
 
 /**
+ * The same tolerance for updates.
+ *
+ * Making only inserts tolerant was worse than making neither: creating a row
+ * quietly succeeded while editing the same field 500'd, so "rename is broken"
+ * was the symptom of a column that does not exist yet. If every field in the
+ * patch turns out to be pending, the row is returned unchanged rather than
+ * sending Postgres an empty update.
+ */
+export async function updateItem(
+  db: ReturnType<typeof createAdminClient>,
+  id: Uuid,
+  patch: Record<string, unknown>,
+) {
+  let payload = patch
+  for (let attempt = 0; attempt <= PENDING_COLUMNS.length; attempt++) {
+    if (Object.keys(payload).length === 0) {
+      const { data } = await db.from('items').select(COLUMNS).eq('id', id).single()
+      return data
+    }
+    const { data, error } = await db.from('items').update(payload).eq('id', id).select().single()
+    if (!error) return data
+    const missing =
+      error.code === '42703' &&
+      PENDING_COLUMNS.find(c => (error.message ?? '').includes(c))
+    if (!missing) throw error
+    payload = Object.fromEntries(Object.entries(payload).filter(([k]) => k !== missing))
+  }
+  throw new Error('items update failed after dropping every pending column')
+}
+
+/**
  * '*' rather than a column list, deliberately.
  *
  * Naming columns here couples every item read to whichever migration last
