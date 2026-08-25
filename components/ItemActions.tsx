@@ -219,24 +219,49 @@ export function ItemActions({
           <span className="mb-1.5 block text-[10px] uppercase tracking-wider text-ink-3">
             Planned — when you mean to do it
           </span>
+          {/*
+            Two shortcuts, then a real date.
+
+            "+1 week" was the third shortcut and nobody means "a week from
+            today" — they mean a day they have in mind. It is gone, and the
+            date field is labelled instead of sitting unexplained under the
+            buttons, where it read as part of them rather than the way to pick
+            any other day.
+          */}
           <div className="mb-1.5 flex gap-1.5">
-            {([['Today', todayIso()], ['Tomorrow', addDays(todayIso(), 1)], ['+1 week', addDays(todayIso(), 7)]] as const).map(
+            {([['Today', todayIso()], ['Tomorrow', addDays(todayIso(), 1)]] as const).map(
               ([label, date]) => (
                 <button key={label} disabled={busy}
                         onClick={() => patch({ planned_date: date, status: null })}
-                        className="flex-1 rounded-md border border-line py-1.5 text-[11px] text-ink-2">
+                        className={`flex-1 rounded-md border py-1.5 text-[11px] ${
+                          current.planned_date === date
+                            ? 'border-mine bg-mine-soft text-mine'
+                            : 'border-line text-ink-2'
+                        }`}>
                   {label}
                 </button>
               ),
             )}
           </div>
-          <input
-            type="date"
-            disabled={busy}
-            value={current.planned_date ?? ''}
-            onChange={e => patch({ planned_date: e.target.value || null, status: null })}
-            className={inputClass}
-          />
+          <label className="block">
+            <span className="mb-1 block text-[10px] text-ink-3">Or any other day</span>
+            <input
+              type="date"
+              disabled={busy}
+              value={current.planned_date ?? ''}
+              onChange={e => patch({ planned_date: e.target.value || null, status: null })}
+              className={inputClass}
+            />
+          </label>
+          {current.planned_date && (
+            <button
+              disabled={busy}
+              onClick={() => patch({ planned_date: null })}
+              className="mt-1 text-[10px] text-ink-3 underline underline-offset-2"
+            >
+              clear the planned date
+            </button>
+          )}
         </section>
 
         <section>
@@ -250,6 +275,15 @@ export function ItemActions({
             onChange={e => patch({ due_date: e.target.value || null })}
             className={inputClass}
           />
+          {current.due_date && (
+            <button
+              disabled={busy}
+              onClick={() => patch({ due_date: null })}
+              className="mt-1 text-[10px] text-ink-3 underline underline-offset-2"
+            >
+              clear the due date
+            </button>
+          )}
           {current.planned_date && current.due_date && (
             <p className="mt-1 text-[10px] text-ink-3">
               {Math.round(

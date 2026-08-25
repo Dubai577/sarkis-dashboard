@@ -54,6 +54,14 @@
   --heat-steady:   #3F6386;
   --heat-quiet:    #8B7C70;
 
+  /* reading bands — alternating so a long list of groups stays scannable.
+     Purple because no semantic colour uses it: a band can never be mistaken
+     for "late" or "waiting". Tints only, so text contrast is untouched. */
+  --band-a:    #F4F0FA;
+  --band-b:    #FCFAFE;
+  --band-nest: #EBE4F7;
+  --band-edge: #7C5CBF;
+
   /* shape */
   --r-sm: 6px;
   --r:    10px;
@@ -94,6 +102,11 @@
     --heat-steady:   #8FB2D0;
     --heat-quiet:    #6E645C;
 
+    --band-a:    #1E1A26;
+    --band-b:    #17151C;
+    --band-nest: #241E31;
+    --band-edge: #A78BDA;
+
     color-scheme: dark;
   }
 }
@@ -127,6 +140,12 @@
   --heat-steady:   #8FB2D0;
   --heat-quiet:    #6E645C;
 
+  --band-a:    #1E1A26;
+  --band-b:    #17151C;
+  --band-nest: #241E31;
+  --band-edge: #A78BDA;
+
+
   color-scheme: dark;
 }
 
@@ -150,6 +169,11 @@
   --color-dropped-soft:var(--dropped-soft);
   --color-done:       var(--done);
   --color-done-soft:  var(--done-soft);
+
+  --color-band-a:     var(--band-a);
+  --color-band-b:     var(--band-b);
+  --color-band-nest:  var(--band-nest);
+  --color-band-edge:  var(--band-edge);
 
   --radius-sm: var(--r-sm);
   --radius-md: var(--r);

@@ -114,9 +114,19 @@ export async function GET() {
         categoryName: p.category?.name ?? null,
         link: p.link ?? null,
         waiting_person: p.waiting_person,
+        sort_order: p.sort_order ?? 0,
         children: projectChildren.get(p.id) ?? [],
       }))
-      .sort((a, b) => b.heat - a.heat)
+      /**
+       * Your order first, heat only to break ties.
+       *
+       * Sorting purely by computed heat meant the board rearranged itself
+       * under you: the section you were working through slid down the page
+       * because something else got closer to its due date. Anything you have
+       * placed by hand keeps its place; everything untouched still floats up
+       * by urgency.
+       */
+      .sort((a, b) => a.sort_order - b.sort_order || b.heat - a.heat)
 
     // ── the two states nothing else surfaces ──
     const dropped = items

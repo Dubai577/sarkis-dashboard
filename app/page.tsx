@@ -43,6 +43,7 @@ interface Project {
   link: string | null
   possession: 'mine' | 'theirs' | 'dropped'
   waiting_person: { id: string; name: string } | null
+  sort_order: number
   children: Child[]
 }
 
@@ -95,6 +96,30 @@ function DashboardView() {
   const [drillRoot, setDrillRoot] = useState<string | null>(null)
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null)
   const groupRefs = useRef<Record<string, HTMLElement | null>>({})
+
+  /**
+   * Move a project past its neighbour and write both positions.
+   *
+   * Rewriting only the moved row is what makes hand-ordering rot: everything
+   * starts at 0, so a single write puts one row in front and leaves the rest
+   * tied. Renumbering the whole visible order costs one request per project
+   * once, and every later move is then a clean swap.
+   */
+  const reorder = useCallback(async (projects: Project[], id: string, delta: number) => {
+    const order = [...projects]
+    const from = order.findIndex(p => p.id === id)
+    const to = from + delta
+    if (from < 0 || to < 0 || to >= order.length) return
+    const [moved] = order.splice(from, 1)
+    order.splice(to, 0, moved)
+    await Promise.all(order.map((p, i) =>
+      p.sort_order === i ? null : fetch(`/api/items/${p.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sort_order: i }),
+      })))
+    load()
+  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -153,11 +178,44 @@ function DashboardView() {
   if (!data) return <Spinner label="Loading" />
 
   const keep = (c: Child) => lens === 'all' || dateStateOf(c) === lens
-  const groups = data.projects
-    .map(p => ({ project: p, rows: p.children.filter(keep) }))
-    .filter(g => lens === 'all' || g.rows.length > 0)
 
-  const shownRows = groups.reduce((n, g) => n + g.rows.length, 0)
+  /**
+   * Built from the whole tree, not from each project's direct children.
+   *
+   * A project listed its children and stopped, so a task filed into a
+   * department was invisible here — the departments showed, empty-looking, and
+   * the work inside them existed only if you drilled. On a page whose entire
+   * claim is "everything at once" that is the one thing that must not happen.
+   */
+  const tree = data.tree ?? []
+  const childrenOf = (id: string) => tree.filter(n => n.parent_id === id)
+  const isContainer = (n: TreeNode) => n.isGroup === true || n.childCount > 0
+  const asChild = (n: TreeNode): Child => ({
+    id: n.id, title: n.title, possession: n.possession,
+    planned_date: n.planned_date, due_date: n.due_date,
+    link: n.link, waiting: n.waiting, days: null, status: n.status,
+  })
+
+  const groups = data.projects
+    .map(p => {
+      const direct = childrenOf(p.id)
+      return {
+        project: p,
+        loose: direct.filter(n => !isContainer(n)).map(asChild).filter(keep),
+        departments: direct.filter(isContainer).map(d => ({
+          node: d,
+          rows: childrenOf(d.id).map(asChild).filter(keep),
+        })),
+      }
+    })
+    .filter(g => lens === 'all'
+      || g.loose.length > 0
+      || g.departments.some(d => d.rows.length > 0))
+
+  const shownRows = groups.reduce(
+    (n, g) => n + g.loose.length + g.departments.reduce((m, d) => m + d.rows.length, 0),
+    0,
+  )
   const todayOpen = data.todos.filter(t => !t.is_complete)
   const laterThisWeek = data.weekTodos
     .filter(t => !t.is_complete && t.task_date > data.date)
@@ -261,21 +319,25 @@ function DashboardView() {
         <span className="text-[10px] tnum text-ink-3">{shownRows} of {tally.all}</span>
       </div>
 
-      {groups.map(({ project, rows }) => (
+      {groups.map(({ project, loose, departments }, gi) => (
         <section
           key={project.id}
           ref={el => { groupRefs.current[project.id] = el }}
-          className="mb-3 scroll-mt-14"
+          /* Alternating bands. With thirty groups stacked, an unbroken page of
+             identical rows is where the eye loses its place. */
+          className={`mb-2 scroll-mt-14 rounded-lg border border-line/50 px-2.5 py-2 ${
+            gi % 2 === 0 ? 'bg-band-a' : 'bg-band-b'
+          }`}
         >
-          <div className="flex flex-wrap items-baseline gap-1.5 border-b border-line pb-0.5">
-            <span className="h-3 w-[3px] shrink-0 rounded-full"
-                  style={{ background: project.color ?? 'var(--border-2)' }} />
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 pb-1.5">
+            <span className="h-3.5 w-[3px] shrink-0 self-center rounded-full"
+                  style={{ background: project.color ?? 'var(--band-edge)' }} />
             <button
               onClick={() => setActionTarget({
                 id: project.id, title: project.title, parent_id: null,
                 planned_date: null, due_date: null, status: null,
               })}
-              className="text-[12px] font-medium"
+              className="text-[13px] font-semibold tracking-tight"
             >
               {project.title}
             </button>
@@ -304,18 +366,101 @@ function DashboardView() {
             {project.waiting_person && (
               <span className="text-[10px] text-ink-3">waiting on {project.waiting_person.name}</span>
             )}
+
+            {/* Put the section you are working through where you want it. */}
+            <span className="ml-auto flex shrink-0 items-center gap-0.5">
+              <button
+                onClick={() => reorder(groups.map(g => g.project), project.id, -1)}
+                disabled={gi === 0}
+                aria-label={`Move ${project.title} up`}
+                title="Move up"
+                className="rounded-sm px-1 text-[10px] leading-none text-ink-3 hover:text-mine disabled:opacity-25"
+              >
+                ▲
+              </button>
+              <button
+                onClick={() => reorder(groups.map(g => g.project), project.id, 1)}
+                disabled={gi === groups.length - 1}
+                aria-label={`Move ${project.title} down`}
+                title="Move down"
+                className="rounded-sm px-1 text-[10px] leading-none text-ink-3 hover:text-mine disabled:opacity-25"
+              >
+                ▼
+              </button>
+            </span>
           </div>
 
-          {rows.length === 0 ? (
-            <p className="py-1 text-[11px] text-ink-3">No children yet.</p>
-          ) : (
-            <div className="flex flex-wrap items-start gap-x-1.5 gap-y-0.5 pt-1">
-              {rows.map(c => (
+          {/* Tasks sitting directly on the project, before any department. */}
+          {loose.length > 0 && (
+            <div className="flex flex-wrap items-start gap-x-2 gap-y-1 pb-1">
+              {loose.map(c => (
                 <Chip key={c.id} child={c} parentId={project.id}
                       onAction={t => setActionTarget(t)}
                       onWait={() => setWaitingTarget(c)} />
               ))}
             </div>
+          )}
+
+          {departments.map(({ node, rows }) => (
+            <div
+              key={node.id}
+              className="mb-1 rounded-md border-l-2 bg-band-nest py-1.5 pl-2 pr-1.5 last:mb-0"
+              style={{ borderColor: 'var(--band-edge)' }}
+            >
+              <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                {/* Says what it is, in words. A department that looks like a
+                    task with slightly bolder type is not distinguishable at a
+                    glance, and that ambiguity is the whole complaint. */}
+                <span className="shrink-0 rounded-sm px-1 py-px text-[8.5px] uppercase tracking-wider text-bg"
+                      style={{ background: 'var(--band-edge)' }}>
+                  sub-project
+                </span>
+                <button
+                  onClick={() => setActionTarget({
+                    id: node.id, title: node.title, parent_id: node.parent_id,
+                    planned_date: node.planned_date, due_date: node.due_date,
+                    status: node.status,
+                  })}
+                  className="text-[12px] font-semibold"
+                >
+                  {node.title}
+                </button>
+                <button
+                  onClick={() => setActionTarget({
+                    id: node.id, title: node.title, parent_id: node.parent_id,
+                    planned_date: node.planned_date, due_date: node.due_date,
+                    status: node.status,
+                  })}
+                  aria-label={`Edit ${node.title}`}
+                  className="text-[9.5px] leading-none text-ink-3 hover:text-mine"
+                >
+                  ✎
+                </button>
+                <span className="text-[9.5px] tnum text-ink-3">{node.childCount}</span>
+                {node.link && (
+                  <a href={node.link} target="_blank" rel="noopener noreferrer"
+                     className="text-[9.5px] text-mine">↗</a>
+                )}
+              </div>
+
+              {rows.length === 0 ? (
+                <p className="pt-0.5 text-[10.5px] text-ink-3">Nothing in here yet.</p>
+              ) : (
+                <div className="flex flex-wrap items-start gap-x-2 gap-y-1 pt-1">
+                  {rows.map(c => (
+                    <Chip key={c.id} child={c} parentId={node.id}
+                          onAction={t => setActionTarget(t)}
+                          onWait={() => setWaitingTarget(c)} />
+                  ))}
+                </div>
+              )}
+
+              {lens === 'all' && <AddChild parentId={node.id} onAdded={load} />}
+            </div>
+          ))}
+
+          {loose.length === 0 && departments.length === 0 && (
+            <p className="py-0.5 text-[11px] text-ink-3">Nothing under this yet.</p>
           )}
 
           {lens === 'all' && (
