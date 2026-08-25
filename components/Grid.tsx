@@ -74,6 +74,16 @@ export function Grid() {
   const [openParent, setOpenParent] = useState<string | null>(null)
   // A row created by the + button, so the cursor lands in it ready to type.
   const [focusNext, setFocusNext] = useState<string | null>(null)
+  /**
+   * The last archive, so it can be taken back.
+   *
+   * Archiving a parent archives its whole subtree, and this button is one
+   * click with no confirmation sitting at the end of every row. That
+   * combination lost a project and its five departments in a single misclick,
+   * with the only way back being a different screen. An undo costs one line of
+   * state and is the difference between a mistake and a loss.
+   */
+  const [undoable, setUndoable] = useState<{ ids: string[]; label: string } | null>(null)
 
   const titleRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
@@ -305,12 +315,30 @@ export function Grid() {
     }
   }
 
-  async function bulkArchive() {
-    const ids = [...selected]
+  async function archive(ids: string[], label: string) {
     setSaving(s => s + 1)
     try {
       await Promise.all(ids.map(id => fetch(`/api/items/${id}`, { method: 'DELETE' })))
       setSelected(new Set())
+      await load()
+      setUndoable({ ids, label })
+    } finally {
+      setSaving(s => s - 1)
+    }
+  }
+
+  async function undoArchive() {
+    if (!undoable) return
+    setSaving(s => s + 1)
+    try {
+      // Restoring a parent restores its subtree, mirroring the archive.
+      await Promise.all(undoable.ids.map(id =>
+        fetch(`/api/items/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archived: false }),
+        })))
+      setUndoable(null)
       await load()
     } finally {
       setSaving(s => s - 1)
@@ -513,11 +541,13 @@ export function Grid() {
 
                   <td className={`${cell} text-center`}>
                     <button
-                      onClick={async () => {
-                        await fetch(`/api/items/${r.id}`, { method: 'DELETE' })
-                        load()
-                      }}
-                      title="Archive"
+                      onClick={() => archive(
+                        [r.id],
+                        r.child_count > 0 ? `${r.title} and ${r.child_count} under it` : r.title,
+                      )}
+                      title={r.child_count > 0
+                        ? `Archive ${r.title} and the ${r.child_count} under it`
+                        : 'Archive'}
                       className="text-[11px] text-ink-3 hover:text-dropped"
                     >
                       ×
@@ -555,6 +585,18 @@ export function Grid() {
         </table>
       </div>
 
+      {undoable && (
+        <div className="flex items-center gap-2 border-t border-line bg-surface px-3 py-2">
+          <span className="text-[12px] text-ink-2">Archived {undoable.label}.</span>
+          <button onClick={undoArchive} className="text-[12px] font-medium text-mine underline underline-offset-2">
+            Undo
+          </button>
+          <button onClick={() => setUndoable(null)} className="ml-auto text-[11px] text-ink-3">
+            dismiss
+          </button>
+        </div>
+      )}
+
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-t border-line bg-surface px-3 py-2">
           <span className="text-[12px] tnum text-ink-2">{selected.size} selected</span>
@@ -578,7 +620,7 @@ export function Grid() {
             {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
           <button
-            onClick={bulkArchive}
+            onClick={() => archive([...selected], `${selected.size} items`)}
             className="ml-auto rounded-md border border-dropped/50 px-2 py-1 text-[11.5px] text-dropped"
           >
             Archive
