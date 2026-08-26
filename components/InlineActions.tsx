@@ -107,14 +107,25 @@ export function AddChild({
   parentId,
   categoryId,
   onAdded,
+  /**
+   * Collapsed until wanted.
+   *
+   * A permanent full-width text box under every group is the single biggest
+   * consumer of vertical space on a board of twenty groups — it costs a whole
+   * row each, forever, to serve a thing you do occasionally. Compact keeps a
+   * one-word affordance and becomes the field on click.
+   */
+  compact = false,
 }: {
   parentId: string
   categoryId?: string | null
   onAdded: () => void
+  compact?: boolean
 }) {
   const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [open, setOpen] = useState(!compact)
 
   async function submit() {
     const text = title.trim()
@@ -138,15 +149,33 @@ export function AddChild({
     }
   }
 
+  if (compact && !open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mt-0.5 text-[10px] text-ink-3 hover:text-mine"
+      >
+        + add
+      </button>
+    )
+  }
+
   return (
-    <div className="flex items-center gap-1.5 py-1">
+    <div className={`flex items-center gap-1.5 ${compact ? 'pt-1' : 'py-1'}`}>
       <input
+        autoFocus={compact}
         value={title}
         onChange={e => setTitle(e.target.value)}
-        onKeyDown={e => e.key === 'Enter' && submit()}
+        onKeyDown={e => {
+          if (e.key === 'Enter') submit()
+          if (e.key === 'Escape' && compact) { setTitle(''); setOpen(false) }
+        }}
+        onBlur={() => { if (compact && !title.trim()) setOpen(false) }}
         placeholder="Add…"
         disabled={busy}
-        className="min-w-0 flex-1 rounded-sm border border-line bg-surface-2 px-2 py-1 text-[12px] outline-none placeholder:text-ink-3 focus:border-mine/60"
+        className={`min-w-0 flex-1 rounded-sm border border-line bg-surface-2 px-1.5 outline-none placeholder:text-ink-3 focus:border-mine/60 ${
+          compact ? 'py-[3px] text-[11px]' : 'py-1 text-[12px]'
+        }`}
       />
       {error && <span className="shrink-0 text-[10px] text-dropped">{error}</span>}
     </div>

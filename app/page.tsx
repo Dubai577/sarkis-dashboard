@@ -325,11 +325,11 @@ function DashboardView() {
           ref={el => { groupRefs.current[project.id] = el }}
           /* Alternating bands. With thirty groups stacked, an unbroken page of
              identical rows is where the eye loses its place. */
-          className={`mb-2 scroll-mt-14 rounded-lg border border-line/50 px-2.5 py-2 ${
+          className={`mb-1.5 scroll-mt-14 rounded-md border border-line/50 px-2 py-1.5 ${
             gi % 2 === 0 ? 'bg-band-a' : 'bg-band-b'
           }`}
         >
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 pb-1.5">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 pb-1">
             <span className="h-3.5 w-[3px] shrink-0 self-center rounded-full"
                   style={{ background: project.color ?? 'var(--band-edge)' }} />
             <button
@@ -392,7 +392,7 @@ function DashboardView() {
 
           {/* Tasks sitting directly on the project, before any department. */}
           {loose.length > 0 && (
-            <div className="flex flex-wrap items-start gap-x-2 gap-y-1 pb-1">
+            <div className="flex flex-wrap items-start gap-x-1.5 gap-y-1 pb-1.5">
               {loose.map(c => (
                 <Chip key={c.id} child={c} parentId={project.id}
                       onAction={t => setActionTarget(t)}
@@ -401,19 +401,29 @@ function DashboardView() {
             </div>
           )}
 
+          {/*
+            Columns, not rows.
+
+            A sub-project laid out full width wastes everything to the right of
+            its longest task — with seven of them stacked, most of the window is
+            empty and the rest is below the fold. CSS columns pack them by
+            height instead, so a wide screen shows four abreast and a phone
+            still gets one. break-inside keeps a box whole.
+          */}
+          <div className="columns-[13.5rem] gap-1.5 [column-fill:balance]">
           {departments.map(({ node, rows }) => (
             <div
               key={node.id}
-              className="mb-1 rounded-md border-l-2 bg-band-nest py-1.5 pl-2 pr-1.5 last:mb-0"
+              className="mb-1.5 inline-block w-full break-inside-avoid rounded-md border-l-2 bg-band-nest py-1 pl-1.5 pr-1"
               style={{ borderColor: 'var(--band-edge)' }}
             >
               <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                 {/* Says what it is, in words. A department that looks like a
                     task with slightly bolder type is not distinguishable at a
                     glance, and that ambiguity is the whole complaint. */}
-                <span className="shrink-0 rounded-sm px-1 py-px text-[8.5px] uppercase tracking-wider text-bg"
+                <span className="shrink-0 rounded-[3px] px-1 text-[8px] uppercase tracking-wider text-bg"
                       style={{ background: 'var(--band-edge)' }}>
-                  sub-project
+                  sub
                 </span>
                 <button
                   onClick={() => setActionTarget({
@@ -421,7 +431,7 @@ function DashboardView() {
                     planned_date: node.planned_date, due_date: node.due_date,
                     status: node.status,
                   })}
-                  className="text-[12px] font-semibold"
+                  className="clamp-1 min-w-0 text-left text-[11.5px] font-semibold leading-tight"
                 >
                   {node.title}
                 </button>
@@ -444,9 +454,9 @@ function DashboardView() {
               </div>
 
               {rows.length === 0 ? (
-                <p className="pt-0.5 text-[10.5px] text-ink-3">Nothing in here yet.</p>
+                <p className="pt-0.5 text-[10.5px] text-ink-3">Empty.</p>
               ) : (
-                <div className="flex flex-wrap items-start gap-x-2 gap-y-1 pt-1">
+                <div className="flex flex-col items-start gap-y-[3px] pt-1">
                   {rows.map(c => (
                     <Chip key={c.id} child={c} parentId={node.id}
                           onAction={t => setActionTarget(t)}
@@ -455,16 +465,17 @@ function DashboardView() {
                 </div>
               )}
 
-              {lens === 'all' && <AddChild parentId={node.id} onAdded={load} />}
+              {lens === 'all' && <AddChild parentId={node.id} onAdded={load} compact />}
             </div>
           ))}
+          </div>
 
           {loose.length === 0 && departments.length === 0 && (
             <p className="py-0.5 text-[11px] text-ink-3">Nothing under this yet.</p>
           )}
 
           {lens === 'all' && (
-            <AddChild parentId={project.id} categoryId={project.category_id} onAdded={load} />
+            <AddChild parentId={project.id} categoryId={project.category_id} onAdded={load} compact />
           )}
         </section>
       ))}
