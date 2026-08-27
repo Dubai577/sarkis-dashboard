@@ -8,6 +8,9 @@ import { Check, ErrorBanner, Spinner } from '@/components/ui/primitives'
 import { AddChild, WaitingOnSheet } from '@/components/InlineActions'
 import { Drill, type TreeNode } from '@/components/Drill'
 import { ItemActions, ActionChip, type ActionTarget } from '@/components/ItemActions'
+import {
+  ChevronDownIcon, ChevronUpIcon, ExternalIcon, PencilIcon,
+} from '@/components/ui/Icon'
 import { dayIndex, DAY_NAMES, mediumLabel } from '@/lib/dates'
 
 /**
@@ -217,6 +220,15 @@ function DashboardView() {
     0,
   )
   const todayOpen = data.todos.filter(t => !t.is_complete)
+  /**
+   * Ticking something off made it vanish, which reads as "did that delete it?"
+   * and takes away the only reward the list gives you — seeing what you got
+   * through. Done work stays on today, struck through, and sinks below what is
+   * still open. Tapping it again puts it back.
+   */
+  const todayAll = [...data.todos].sort((a, b) =>
+    Number(a.is_complete) - Number(b.is_complete)
+    || (a.start_time ?? '').localeCompare(b.start_time ?? ''))
   const laterThisWeek = data.weekTodos
     .filter(t => !t.is_complete && t.task_date > data.date)
     .sort((a, b) => a.task_date.localeCompare(b.task_date))
@@ -233,9 +245,9 @@ function DashboardView() {
           count={todayOpen.length}
           href={`/calendar?view=day&date=${data.date}`}
         >
-          {todayOpen.length === 0
+          {todayAll.length === 0
             ? <p className="py-1 text-[12px] text-ink-3">Nothing on today.</p>
-            : todayOpen.map(t => (
+            : todayAll.map(t => (
                 <TodoLine key={t.id} todo={t} onToggle={() => toggleTodo(t)} />
               ))}
         </TimeBlock>
@@ -325,7 +337,7 @@ function DashboardView() {
           ref={el => { groupRefs.current[project.id] = el }}
           /* Alternating bands. With thirty groups stacked, an unbroken page of
              identical rows is where the eye loses its place. */
-          className={`mb-1.5 scroll-mt-14 rounded-md border border-line/50 px-2 py-1.5 ${
+          className={`mb-2 scroll-mt-14 rounded-xl border border-line/40 px-2.5 py-2 shadow-card ${
             gi % 2 === 0 ? 'bg-band-a' : 'bg-band-b'
           }`}
         >
@@ -348,9 +360,9 @@ function DashboardView() {
               })}
               aria-label={`Edit ${project.title}`}
               title="Edit this project"
-              className="text-[10px] leading-none text-ink-3 hover:text-mine"
+              className="rounded-md p-1 text-ink-3 hover:bg-band-nest hover:text-mine"
             >
-              ✎
+              <PencilIcon size={12} />
             </button>
             <button onClick={() => setDrillRoot(project.id)}
                     className="text-[10px] tnum text-ink-3 underline underline-offset-2">
@@ -374,18 +386,18 @@ function DashboardView() {
                 disabled={gi === 0}
                 aria-label={`Move ${project.title} up`}
                 title="Move up"
-                className="rounded-sm px-1 text-[10px] leading-none text-ink-3 hover:text-mine disabled:opacity-25"
+                className="rounded-md p-1 text-ink-3 hover:bg-band-nest hover:text-mine disabled:opacity-25"
               >
-                ▲
+                <ChevronUpIcon size={12} />
               </button>
               <button
                 onClick={() => reorder(groups.map(g => g.project), project.id, 1)}
                 disabled={gi === groups.length - 1}
                 aria-label={`Move ${project.title} down`}
                 title="Move down"
-                className="rounded-sm px-1 text-[10px] leading-none text-ink-3 hover:text-mine disabled:opacity-25"
+                className="rounded-md p-1 text-ink-3 hover:bg-band-nest hover:text-mine disabled:opacity-25"
               >
-                ▼
+                <ChevronDownIcon size={12} />
               </button>
             </span>
           </div>
@@ -442,14 +454,14 @@ function DashboardView() {
                     status: node.status,
                   })}
                   aria-label={`Edit ${node.title}`}
-                  className="text-[9.5px] leading-none text-ink-3 hover:text-mine"
+                  className="rounded p-0.5 text-ink-3 hover:text-mine"
                 >
-                  ✎
+                  <PencilIcon size={10} />
                 </button>
                 <span className="text-[9.5px] tnum text-ink-3">{node.childCount}</span>
                 {node.link && (
                   <a href={node.link} target="_blank" rel="noopener noreferrer"
-                     className="text-[9.5px] text-mine">↗</a>
+                     className="text-mine"><ExternalIcon size={10} /></a>
                 )}
               </div>
 
@@ -578,7 +590,7 @@ function Chip({
     status: child.status ?? null,
   }
   return (
-    <span className="inline-flex max-w-full items-center gap-1 rounded-sm border border-line/70 py-[3px] pl-1.5 pr-1 leading-none">
+    <span className="group inline-flex max-w-full items-center gap-1 rounded-full border border-line/40 bg-surface py-[3px] pl-2 pr-1 leading-none shadow-card hover:border-line">
       {/*
         The title used to be a link to the item's own page, which is the one
         thing this dashboard exists to avoid: you came here to see everything
@@ -605,16 +617,16 @@ function Chip({
 
       {child.link && (
         <a href={child.link} target="_blank" rel="noopener noreferrer"
-           className="shrink-0 text-[9.5px] text-mine">↗</a>
+           className="shrink-0 text-mine"><ExternalIcon size={10} /></a>
       )}
 
       <button
         onClick={() => onAction(target)}
         aria-label={`Edit ${child.title}`}
         title="Edit — what it is, when it is due, where it lives"
-        className="shrink-0 text-[10px] leading-none text-ink-3 hover:text-mine"
+        className="shrink-0 rounded-full p-0.5 text-ink-3 opacity-60 hover:text-mine group-hover:opacity-100"
       >
-        ✎
+        <PencilIcon size={10} />
       </button>
 
       {/* Shows the current date state, and opens the same editor. */}

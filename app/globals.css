@@ -66,6 +66,12 @@
   --r-sm: 6px;
   --r:    10px;
   --r-lg: 16px;
+
+  /* Depth. Everything was a 1px line on a flat fill, which is what makes an
+     interface read as a document rather than an app. Shadows are tinted with
+     the ink colour rather than pure black so they sit in the palette. */
+  --shadow-sm: 0 1px 2px rgb(58 44 33 / 0.05), 0 1px 3px rgb(58 44 33 / 0.04);
+  --shadow-md: 0 2px 4px rgb(58 44 33 / 0.05), 0 4px 12px rgb(58 44 33 / 0.06);
   --r-xl: 22px;
 
   /* the one place tap-target size is decided */
@@ -249,3 +255,68 @@ body {
   to   { opacity: 1; }
 }
 .fade-in { animation: fade-in 120ms ease-out; }
+
+
+/* ──────────────────────────────────────────────────────────────
+   Modernising pass.
+
+   The bones were fine; what dated it was everything below the
+   component level — no motion, no focus treatment, glyphs doing
+   the work of icons, and type rendered without hinting hints.
+   ────────────────────────────────────────────────────────────── */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Interactive things move. 120ms is under the threshold where a
+   transition reads as lag but over the one where it reads as a jump. */
+button, a, input, select, textarea, [role='button'] {
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease,
+    box-shadow 120ms ease;
+}
+
+/* A visible focus ring for keyboard users only — :focus alone put a ring
+   on every mouse click, which is why interfaces end up removing it
+   entirely and becoming unusable without a mouse. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--mine);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* Dark shadows need more opacity to be seen at all. Declared for both the
+   explicit choice and the system default, so the toggle wins either way. */
+:root[data-theme='dark'] {
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px rgb(0 0 0 / 0.2);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.3), 0 4px 12px rgb(0 0 0 / 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px rgb(0 0 0 / 0.2);
+    --shadow-md: 0 2px 4px rgb(0 0 0 / 0.3), 0 4px 12px rgb(0 0 0 / 0.35);
+  }
+}
+
+.shadow-card { box-shadow: var(--shadow-sm); }
+.shadow-pop  { box-shadow: var(--shadow-md); }
+
+/* Native controls inherit almost nothing. A date field and a select
+   should look like the text inputs beside them, not like 1998. */
+input[type='date'] { font-variant-numeric: tabular-nums; }
+select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right 0.7em top 55%, right 0.45em top 55%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  padding-right: 1.5em;
+}

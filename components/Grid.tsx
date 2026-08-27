@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CloseIcon, PlusIcon } from '@/components/ui/Icon'
 
 /**
  * The grid — everything, at once, editable where it sits.
@@ -467,9 +468,9 @@ export function Grid() {
                         onClick={() => addChild(r.id)}
                         title="Add something under this"
                         aria-label={`Add something under ${r.title}`}
-                        className="shrink-0 rounded-[3px] border border-line px-1 text-[10px] leading-[15px] text-ink-3 hover:border-mine hover:text-mine"
+                        className="shrink-0 rounded border border-line p-[1px] text-ink-3 hover:border-mine hover:bg-mine-soft hover:text-mine"
                       >
-                        +
+                        <PlusIcon size={10} />
                       </button>
                     </div>
                   </td>
@@ -548,9 +549,9 @@ export function Grid() {
                       title={r.child_count > 0
                         ? `Archive ${r.title} and the ${r.child_count} under it`
                         : 'Archive'}
-                      className="text-[11px] text-ink-3 hover:text-dropped"
+                      className="rounded p-0.5 text-ink-3 hover:bg-dropped-soft hover:text-dropped"
                     >
-                      ×
+                      <CloseIcon size={12} />
                     </button>
                   </td>
                 </tr>

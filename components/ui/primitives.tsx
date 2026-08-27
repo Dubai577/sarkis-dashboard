@@ -106,9 +106,9 @@ export function Button({
   full?: boolean
 }) {
   const styles = {
-    primary: 'bg-mine text-bg font-medium hover:opacity-90',
-    quiet:   'bg-surface-2 text-ink hover:bg-surface-3 border border-line',
-    danger:  'bg-dropped-soft text-dropped border border-dropped/30 hover:bg-dropped/15',
+    primary: 'bg-mine text-bg font-medium shadow-card hover:opacity-90 active:scale-[0.98]',
+    quiet:   'bg-surface-2 text-ink border border-line hover:bg-surface-3 active:scale-[0.98]',
+    danger:  'bg-dropped-soft text-dropped border border-dropped/30 hover:bg-dropped/15 active:scale-[0.98]',
     ghost:   'text-ink-2 hover:text-ink',
   }[variant]
 
@@ -248,4 +248,5 @@ export function Field({
 }
 
 export const inputClass =
-  'w-full rounded-md border border-line bg-surface-2 px-3 py-2.5 text-base text-ink outline-none placeholder:text-ink-3 focus:border-mine/60'
+  'w-full rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-base text-ink outline-none ' +
+  'placeholder:text-ink-3 hover:border-line-2 focus:border-mine focus:ring-2 focus:ring-mine/15'
