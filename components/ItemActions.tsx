@@ -399,7 +399,29 @@ export function ItemActions({
   )
 }
 
-/** The compact trigger that sits on a row. Shows the state at a glance. */
+/**
+ * The compact trigger that sits on a row.
+ *
+ * It used to print a date, which is the least useful form of the answer: nobody
+ * reads "Sep 9" and knows whether that is a problem. A countdown says the thing
+ * you actually want — how long you have — and a dot carries the same fact in
+ * colour so a wall of chips is scannable without reading any of them.
+ *
+ * The countdown runs to the PLANNED date when there is one, because that is the
+ * day you decided to do the work, and the deadline is already accounted for by
+ * having chosen it. It falls back to the due date when nothing is planned.
+ */
+export function daysUntil(date: string, now: string): number {
+  return Math.round(
+    (Date.parse(`${date}T12:00:00Z`) - Date.parse(`${now}T12:00:00Z`)) / 86400000,
+  )
+}
+
+export function countdownLabel(days: number): string {
+  if (days < 0) return `${Math.abs(days)} days late`
+  return `${days} days`
+}
+
 export function ActionChip({
   item,
   onOpen,
@@ -407,27 +429,47 @@ export function ActionChip({
   item: ActionTarget
   onOpen: () => void
 }) {
-  const label = item.planned_date
-    ? mediumLabel(item.planned_date)
-    : item.due_date
-      ? `due ${mediumLabel(item.due_date)}`
-      : item.status === 'Ongoing'
-        ? 'ongoing'
-        : 'set'
+  const now = todayIso()
+  const target = item.planned_date ?? item.due_date
+  const days = target ? daysUntil(target, now) : null
 
-  const tone = item.due_date && !item.planned_date
-    ? 'text-dropped border-dropped/40'
-    : item.status === 'Ongoing'
-      ? 'text-theirs border-theirs/40'
-      : item.planned_date
-        ? 'text-ink-2 border-line'
-        : 'text-ink-3 border-line'
+  const label = days === null
+    ? (item.status === 'Ongoing' ? 'ongoing' : 'set')
+    : countdownLabel(days)
+
+  /**
+   * Colour by how much room is left, not by which field it came from. Late is
+   * late whether it was planned or due.
+   */
+  const tone =
+    days === null
+      ? item.status === 'Ongoing'
+        ? { dot: 'var(--theirs)', text: 'text-theirs border-theirs/40' }
+        : { dot: 'var(--border-2)', text: 'text-ink-3 border-line' }
+      : days < 0
+        ? { dot: 'var(--dropped)', text: 'text-dropped border-dropped/40' }
+        : days <= 1
+          ? { dot: 'var(--dropped)', text: 'text-dropped border-dropped/30' }
+          : days <= 3
+            ? { dot: 'var(--mine)', text: 'text-mine border-mine/30' }
+            : days <= 7
+              ? { dot: 'var(--theirs)', text: 'text-theirs border-theirs/30' }
+              : { dot: 'var(--border-2)', text: 'text-ink-3 border-line' }
+
+  // The dates themselves are still one hover away, for when the countdown is
+  // not enough.
+  const title = [
+    item.planned_date ? `planned ${mediumLabel(item.planned_date)}` : null,
+    item.due_date ? `due ${mediumLabel(item.due_date)}` : null,
+  ].filter(Boolean).join(' · ') || 'No date set'
 
   return (
     <button
       onClick={e => { e.preventDefault(); e.stopPropagation(); onOpen() }}
-      className={`shrink-0 rounded-sm border px-1.5 py-px text-[9.5px] tnum ${tone}`}
+      title={title}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px text-[9.5px] tnum ${tone.text}`}
     >
+      <span className="h-[5px] w-[5px] shrink-0 rounded-full" style={{ background: tone.dot }} />
       {label}
     </button>
   )

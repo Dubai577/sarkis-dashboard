@@ -306,9 +306,31 @@ function DashboardView() {
   const itemsThisWeek = (datedOn(
     data.date > data.weekStart ? nextDay(data.date) : data.weekStart, weekEnd,
   ) as { node: TreeNode; when: string; kind: 'planned' | 'due' }[])
+
   const laterThisWeek = data.weekTodos
     .filter(t => !t.is_complete && t.task_date > data.date)
     .sort((a, b) => a.task_date.localeCompare(b.task_date))
+
+  /**
+   * The rest of the week, a day at a time.
+   *
+   * One undifferentiated list of everything before Sunday answers "how much is
+   * coming" and not "what is Thursday", and Thursday is the question you act
+   * on. Days with nothing in them are omitted rather than shown empty: a column
+   * of blanks is noise, and the gap between two headers already says the day
+   * is free.
+   */
+  const weekByDay = (() => {
+    const buckets = new Map<string, { todos: Todo[]; items: typeof itemsThisWeek }>()
+    const bucket = (d: string) => {
+      const b = buckets.get(d) ?? { todos: [], items: [] }
+      buckets.set(d, b)
+      return b
+    }
+    for (const t of laterThisWeek) bucket(t.task_date).todos.push(t)
+    for (const i of itemsThisWeek) bucket(i.when).items.push(i)
+    return [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  })()
 
   return (
     <div className="mx-auto max-w-4xl px-3 pb-8 pt-3">
@@ -339,15 +361,30 @@ function DashboardView() {
           count={laterThisWeek.length + itemsThisWeek.length}
           href="/calendar?view=week"
         >
-          {laterThisWeek.length === 0 && itemsThisWeek.length === 0
-            ? <p className="py-1 text-[12px] text-ink-3">Nothing else dated this week.</p>
-            : laterThisWeek.map(t => (
-                <TodoLine key={t.id} todo={t} onToggle={() => toggleTodo(t)} showDay />
-              ))}
-          {itemsThisWeek.map(({ node, kind }) => (
-            <DatedItem key={node.id} node={node} kind={kind} tree={data.tree ?? []}
-                       onOpen={t => setActionTarget(t)} />
-          ))}
+          {weekByDay.length === 0 ? (
+            <p className="py-1 text-[12px] text-ink-3">Nothing else dated this week.</p>
+          ) : (
+            weekByDay.map(([date, { todos, items }]) => (
+              <div key={date} className="mb-1 last:mb-0">
+                <div className="flex items-baseline gap-1.5 border-b border-line/70 pb-px">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-ink-2">
+                    {DAY_NAMES[dayIndex(date)]}
+                  </span>
+                  <span className="text-[10px] tnum text-ink-3">{mediumLabel(date)}</span>
+                  <span className="ml-auto text-[10px] tnum text-ink-3">
+                    {todos.length + items.length}
+                  </span>
+                </div>
+                {todos.map(t => (
+                  <TodoLine key={t.id} todo={t} onToggle={() => toggleTodo(t)} />
+                ))}
+                {items.map(({ node, kind }) => (
+                  <DatedItem key={node.id} node={node} kind={kind} tree={data.tree ?? []}
+                             onOpen={t => setActionTarget(t)} />
+                ))}
+              </div>
+            ))
+          )}
         </TimeBlock>
       </div>
 

@@ -28,6 +28,24 @@ begin;
 
 alter table items add column if not exists planned_auto boolean not null default false;
 
+/*
+ * Claim the coursework plans the app already derived.
+ *
+ * The 151 planned dates on Canvas rows were written by the planning rules
+ * before this column existed — no hand-set date has ever been put on a synced
+ * assignment. Without this they would land as "yours", and the sync would
+ * refuse to move them when a deadline shifts, which is the exact problem the
+ * rules were built to solve.
+ *
+ * Scoped to external_source = 'canvas': nothing you created by hand is
+ * touched, whatever date it carries.
+ */
+update items
+   set planned_auto = true
+ where external_source = 'canvas'
+   and planned_date is not null
+   and planned_auto = false;
+
 commit;
 
 select
