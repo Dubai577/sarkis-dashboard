@@ -6,6 +6,10 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // Lets a module be imported with its .ts extension, which is what plain
+    // Node requires. lib/sync/canvas.ts is run both by the route and directly
+    // by scripts/canvas-sync.mjs, and one import style beats two code paths.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
