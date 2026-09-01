@@ -99,6 +99,14 @@ function DashboardView() {
   const [waitingTarget, setWaitingTarget] = useState<Child | null>(null)
   const [drillRoot, setDrillRoot] = useState<string | null>(null)
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null)
+  /**
+   * Classes opened past the two-week horizon.
+   *
+   * A term of coursework is 160 rows; showing all of it on the dashboard buries
+   * everything else you own. Two weeks is the span you can actually act on, and
+   * the rest is one click away per class rather than always underfoot.
+   */
+  const [openedFully, setOpenedFully] = useState<Set<string>>(new Set())
   const groupRefs = useRef<Record<string, HTMLElement | null>>({})
 
   /**
@@ -192,6 +200,13 @@ function DashboardView() {
    * claim is "everything at once" that is the one thing that must not happen.
    */
   const tree = data.tree ?? []
+  // Two weeks out, as a plain date string so the comparison stays a string
+  // compare — the same discipline every other date check here uses.
+  const horizon = (() => {
+    const d = new Date(`${data.date}T12:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + 14)
+    return d.toISOString().slice(0, 10)
+  })()
   const childrenOf = (id: string) => tree.filter(n => n.parent_id === id)
   const isContainer = (n: TreeNode) => n.isGroup === true || n.childCount > 0
   const asChild = (n: TreeNode): Child => ({
@@ -204,13 +219,18 @@ function DashboardView() {
   const groups = data.projects
     .map(p => {
       const direct = childrenOf(p.id)
+      const horizoned = p.title.trim().toUpperCase() === 'VT'
       return {
         project: p,
         loose: direct.filter(n => !isContainer(n)).map(asChild).filter(keep),
-        departments: direct.filter(isContainer).map(d => ({
-          node: d,
-          rows: childrenOf(d.id).map(asChild).filter(keep),
-        })),
+        departments: direct.filter(isContainer).map(d => {
+          const all = childrenOf(d.id).map(asChild).filter(keep)
+          // Only coursework is capped; a convent department has no horizon.
+          const capped = horizoned && !openedFully.has(d.id)
+            ? all.filter(c => !c.due_date || c.due_date <= horizon)
+            : all
+          return { node: d, rows: capped, hiddenCount: all.length - capped.length }
+        }),
       }
     })
     .filter(g => lens === 'all'
@@ -425,7 +445,7 @@ function DashboardView() {
             still gets one. break-inside keeps a box whole.
           */}
           <div className="columns-[13.5rem] gap-1.5 [column-fill:balance]">
-          {departments.map(({ node, rows }) => (
+          {departments.map(({ node, rows, hiddenCount }) => (
             <div
               key={node.id}
               className="mb-1.5 inline-block w-full break-inside-avoid rounded-md border-l-2 bg-band-nest py-1 pl-1.5 pr-1"
@@ -468,7 +488,9 @@ function DashboardView() {
               </div>
 
               {rows.length === 0 ? (
-                <p className="pt-0.5 text-[10.5px] text-ink-3">Empty.</p>
+                <p className="pt-0.5 text-[10.5px] text-ink-3">
+                  {hiddenCount > 0 ? 'Nothing due in the next two weeks.' : 'Empty.'}
+                </p>
               ) : (
                 <div className="flex flex-col items-start gap-y-[3px] pt-1">
                   {rows.map(c => (
@@ -479,6 +501,24 @@ function DashboardView() {
                 </div>
               )}
 
+              {hiddenCount > 0 && (
+                <button
+                  onClick={() => setOpenedFully(prev => new Set(prev).add(node.id))}
+                  className="mt-0.5 block text-[10px] text-mine hover:underline"
+                >
+                  show all {rows.length + hiddenCount} — {hiddenCount} further out
+                </button>
+              )}
+              {openedFully.has(node.id) && (
+                <button
+                  onClick={() => setOpenedFully(prev => {
+                    const n = new Set(prev); n.delete(node.id); return n
+                  })}
+                  className="mt-0.5 block text-[10px] text-ink-3 hover:underline"
+                >
+                  back to two weeks
+                </button>
+              )}
               {lens === 'all' && <AddChild parentId={node.id} onAdded={load} compact />}
             </div>
           ))}

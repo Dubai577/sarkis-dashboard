@@ -2,6 +2,7 @@
 // scripts/canvas-sync.mjs as well as by the route, and plain Node does not
 // know the alias. One import style that works in both beats two code paths.
 import { parseIcs, upcoming, type IcsEvent } from '../ics.ts'
+import { planFor } from './planning.ts'
 
 /**
  * The Canvas sync itself, separate from the route that triggers it.
@@ -27,6 +28,7 @@ export interface SyncReport {
   updated: number
   unchanged: number
   skippedArchived: number
+  planned: number
   classes: string[]
   createdClasses: string[]
   errors: string[]
@@ -57,11 +59,12 @@ export async function syncCanvas(db: Db, feedUrls: string[], today: string): Pro
 
   const { data: allItems, error: readErr } = await db
     .from('items')
-    .select('id,title,parent_id,external_uid,due_date,archived_at')
+    .select('id,title,parent_id,external_uid,due_date,archived_at,planned_date,planned_auto')
   if (readErr) throw readErr
   const items = (allItems ?? []) as {
     id: string; title: string; parent_id: string | null
     external_uid: string | null; due_date: string | null; archived_at: string | null
+    planned_date: string | null; planned_auto: boolean | null
   }[]
 
   const vt = items.find(i => !i.parent_id && normalise(i.title) === 'VT' && !i.archived_at)
@@ -95,16 +98,21 @@ export async function syncCanvas(db: Db, feedUrls: string[], today: string): Pro
   let updated = 0
   let unchanged = 0
   let skippedArchived = 0
+  let planned = 0
 
   for (const event of window) {
     const parentId = event.course ? classes.get(event.course) ?? vt.id : vt.id
     const existing = byUid.get(event.uid)
 
     if (!existing) {
+      const plan = planFor(event.course, event.date, event.title)
+      if (plan) planned++
       const { error } = await db.from('items').insert({
         title: event.title,
         parent_id: parentId,
         due_date: event.date,
+        planned_date: plan,
+        planned_auto: plan !== null,
         external_uid: event.uid,
         external_source: 'canvas',
         external_synced_at: new Date().toISOString(),
@@ -125,25 +133,38 @@ export async function syncCanvas(db: Db, feedUrls: string[], today: string): Pro
       continue
     }
 
+    /**
+     * Re-derive the plan only where the app owns it. A planned date you set by
+     * hand carries planned_auto false and is never touched, which is the whole
+     * reason that column exists.
+     */
+    const ownsPlan = existing.planned_auto === true || existing.planned_date === null
+    const plan = ownsPlan ? planFor(event.course, event.date, event.title) : existing.planned_date
+
     const changed =
       existing.title !== event.title ||
       existing.due_date !== event.date ||
-      existing.parent_id !== parentId
+      existing.parent_id !== parentId ||
+      (ownsPlan && plan !== existing.planned_date)
 
     if (!changed) {
       unchanged++
       continue
     }
 
-    const { error } = await db
-      .from('items')
-      .update({
-        title: event.title,
-        due_date: event.date,
-        parent_id: parentId,
-        external_synced_at: new Date().toISOString(),
-      })
-      .eq('id', existing.id)
+    const patch: Record<string, unknown> = {
+      title: event.title,
+      due_date: event.date,
+      parent_id: parentId,
+      external_synced_at: new Date().toISOString(),
+    }
+    if (ownsPlan && plan !== existing.planned_date) {
+      patch.planned_date = plan
+      patch.planned_auto = plan !== null
+      planned++
+    }
+
+    const { error } = await db.from('items').update(patch).eq('id', existing.id)
     if (error) throw error
     updated++
   }
@@ -155,6 +176,7 @@ export async function syncCanvas(db: Db, feedUrls: string[], today: string): Pro
     updated,
     unchanged,
     skippedArchived,
+    planned,
     classes: [...classes.keys()].sort(),
     createdClasses,
     errors,

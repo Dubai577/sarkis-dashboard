@@ -8,7 +8,7 @@ import { today as todayIso } from '@/lib/dates'
 const WRITABLE = [
   'parent_id', 'title', 'notes', 'category_id', 'priority', 'status',
   'planned_date', 'due_date', 'start_time', 'end_time', 'sort_order',
-  'board', 'waiting_on', 'waiting_since', 'nudge_after', 'link', 'is_group', 'progress',
+  'board', 'waiting_on', 'waiting_since', 'nudge_after', 'link', 'is_group', 'progress', 'planned_auto',
 ] as const
 
 /** GET /api/items/[id] — the item, its children, and its ancestors. */
@@ -58,6 +58,13 @@ export async function PATCH(
     }
     patch.title = patch.title.trim()
   }
+
+  /**
+   * Setting a planned date by hand claims it. Without this the nightly rule
+   * would re-derive over the top of a decision you made deliberately, which is
+   * the fastest way to stop trusting a tool that writes to your data.
+   */
+  if ('planned_date' in patch && !('planned_auto' in patch)) patch.planned_auto = false
 
   if ('board' in patch && !['auto', 'pinned', 'muted'].includes(patch.board as string)) {
     return badRequest('board must be auto, pinned or muted.')
