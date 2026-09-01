@@ -97,5 +97,21 @@ export function planFor(course: string | null, dueDate: string, title: string): 
   // The rule that beats every other rule.
   for (let i = 0; i < 4 && BANNED.has(dayOf(planned)); i++) planned = shift(planned, -1)
 
-  return planned < dueDate ? planned : null
+  /**
+   * The buffer is the whole point, so it is guaranteed rather than hoped for.
+   *
+   * This used to return null when the rule and the weekend guard conspired to
+   * land on or after the deadline — and a null plan is precisely what surfaces
+   * as "due" on the dashboard, so the one case that most needed a plan got
+   * none. Step back to the last allowed day before the deadline instead.
+   *
+   * A planned date equal to its due date is not a plan, it is the deadline
+   * wearing a different hat.
+   */
+  if (planned >= dueDate) {
+    planned = shift(dueDate, -1)
+    for (let i = 0; i < 6 && BANNED.has(dayOf(planned)); i++) planned = shift(planned, -1)
+  }
+
+  return planned
 }

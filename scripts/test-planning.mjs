@@ -67,5 +67,21 @@ console.log('\n── unlisted classes fall back to two days ──')
 eq('ISE 4644 Thu deadline -> Tue', day(planFor('ISE 4644', '2026-09-10', 'HW')), 'Tue')
 eq('ISE 4644 Tue deadline -> Sun becomes Thu', day(planFor('ISE 4644', '2026-09-08', 'HW')), 'Thu')
 
+console.log('\n── the buffer is never zero ──')
+// Every class against every weekday of a full year: a plan must exist, must
+// land before its deadline, and must never equal it.
+const sweep = []
+for (let i = 0; i < 365; i++) {
+  const d = new Date(Date.UTC(2026, 7, 15) + i * 86400000).toISOString().slice(0, 10)
+  for (const c of ['BMES 2004', 'BMES 3004', 'BMES 3224', 'MSE 2034', 'ISE 3434', 'EGR 240', 'ISE 4644', null]) {
+    sweep.push({ c, due: d, p: planFor(c, d, 'Assignment') })
+  }
+}
+eq('every assignment gets a plan', sweep.filter(x => x.p === null).length, 0)
+eq('no plan equals its due date', sweep.filter(x => x.p === x.due).length, 0)
+eq('no plan is after its due date', sweep.filter(x => x.p > x.due).length, 0)
+eq('no plan on Fri/Sat/Sun', sweep.filter(x => ['Fri', 'Sat', 'Sun'].includes(day(x.p))).length, 0)
+console.log(`  ${sweep.length} class/deadline pairs swept across a full year`)
+
 console.log(`\n${fail === 0 ? '✅  planning rules verified' : `❌  ${fail} failed`}\n`)
 process.exitCode = fail === 0 ? 0 : 1
