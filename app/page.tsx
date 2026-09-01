@@ -54,6 +54,11 @@ interface Project {
 interface Todo {
   id: string; title: string; task_date: string; is_complete: boolean
   start_time: string | null
+  /** The item this was materialised from, if any. */
+  source_item_id?: string | null
+  /** The date it was originally meant to happen, before any rollover. */
+  origin_date?: string | null
+  roll_count?: number | null
 }
 
 interface Payload {
@@ -285,9 +290,23 @@ function DashboardView() {
    * you meant to do it, due is when it is owed, and on this page the two are
    * genuinely different answers to "what about today".
    */
+  /**
+   * Items already materialised as a todo, so they are not listed twice.
+   *
+   * lib/db/sync.ts turns every planned item into a todo, which is what makes it
+   * tickable and what lets rollover walk it forward when a day goes by
+   * unchecked. Listing the item as well showed each assignment twice — once
+   * bare from the todo, once again with its class. The todo wins because it can
+   * be completed; the class label moves onto it instead.
+   */
+  const mirrored = new Set(
+    [...data.todos, ...data.weekTodos].map(t => t.source_item_id).filter(Boolean) as string[],
+  )
+
   const datedOn = (from: string, to: string) => (data.tree ?? [])
     .filter(n => n.parent_id && n.isGroup !== true)
     .filter(n => n.progress !== 'done')
+    .filter(n => !mirrored.has(n.id))
     .map(n => {
       const planned = n.planned_date && n.planned_date >= from && n.planned_date <= to
       const due = n.due_date && n.due_date >= from && n.due_date <= to
@@ -347,7 +366,8 @@ function DashboardView() {
           {todayAll.length === 0 && itemsToday.length === 0
             ? <p className="py-1 text-[12px] text-ink-3">Nothing on today.</p>
             : todayAll.map(t => (
-                <TodoLine key={t.id} todo={t} onToggle={() => toggleTodo(t)} />
+                <TodoLine key={t.id} todo={t} onToggle={() => toggleTodo(t)}
+                          tree={data.tree ?? []} today={data.date} />
               ))}
           {itemsToday.map(({ node, kind }) => (
             <DatedItem key={node.id} node={node} kind={kind} tree={data.tree ?? []}
@@ -376,7 +396,8 @@ function DashboardView() {
                   </span>
                 </div>
                 {todos.map(t => (
-                  <TodoLine key={t.id} todo={t} onToggle={() => toggleTodo(t)} />
+                  <TodoLine key={t.id} todo={t} onToggle={() => toggleTodo(t)}
+                            tree={data.tree ?? []} today={data.date} />
                 ))}
                 {items.map(({ node, kind }) => (
                   <DatedItem key={node.id} node={node} kind={kind} tree={data.tree ?? []}
@@ -742,16 +763,60 @@ function DatedItem({
 }
 
 function TodoLine({
-  todo, onToggle, showDay,
+  todo, onToggle, showDay, tree = [], today,
 }: {
   todo: Todo; onToggle: () => void; showDay?: boolean
+  tree?: TreeNode[]; today?: string
 }) {
+  /**
+   * A materialised item carries context a bare todo does not: which class it
+   * belongs to, when it is actually due, and — if rollover has walked it
+   * forward — that it was meant to be done days ago.
+   *
+   * That last part is the whole value of rollover being visible. A task
+   * quietly moving to today looks like a task that was always for today; the
+   * slip is the information.
+   */
+  const source = todo.source_item_id ? tree.find(n => n.id === todo.source_item_id) : undefined
+  const parent = source?.parent_id ? tree.find(n => n.id === source.parent_id) : undefined
+  const slipped = todo.origin_date && todo.origin_date < todo.task_date
+    ? Math.round(
+        (Date.parse(`${todo.task_date}T12:00:00Z`) - Date.parse(`${todo.origin_date}T12:00:00Z`))
+        / 86400000)
+    : 0
+  const dueIn = source?.due_date && today
+    ? Math.round(
+        (Date.parse(`${source.due_date}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000)
+    : null
+
   return (
-    <div className="flex items-center gap-2 border-b border-line/60 py-1 last:border-b-0">
+    <div className="flex items-center gap-1.5 border-b border-line/60 py-1 last:border-b-0">
       <Check checked={todo.is_complete} onChange={onToggle} label={`Complete ${todo.title}`} />
-      <span className={`clamp-1 flex-1 text-[12px] ${todo.is_complete ? 'text-ink-3 line-through' : ''}`}>
+      <span className={`clamp-1 min-w-0 flex-1 text-[12px] ${
+        todo.is_complete ? 'text-ink-3 line-through' : ''
+      }`}>
         {todo.title}
       </span>
+
+      {slipped > 0 && !todo.is_complete && (
+        <span className="shrink-0 rounded-sm bg-dropped-soft px-1 text-[8.5px] uppercase tracking-wider text-dropped"
+              title={`Was planned for ${mediumLabel(todo.origin_date!)}`}>
+          {slipped}d late
+        </span>
+      )}
+
+      {dueIn !== null && !todo.is_complete && (
+        <span className={`shrink-0 text-[9.5px] tnum ${
+          dueIn <= 1 ? 'text-dropped' : dueIn <= 3 ? 'text-mine' : 'text-ink-3'
+        }`} title={`Due ${mediumLabel(source!.due_date!)}`}>
+          due {dueIn < 0 ? `${Math.abs(dueIn)}d ago` : `in ${dueIn}d`}
+        </span>
+      )}
+
+      {parent && (
+        <span className="clamp-1 max-w-[34%] shrink-0 text-[10px] text-ink-3">{parent.title}</span>
+      )}
+
       <span className="shrink-0 text-[10px] tnum text-ink-3">
         {showDay ? DAY_NAMES[dayIndex(todo.task_date)].slice(0, 3) : ''}
         {todo.start_time ? ` ${todo.start_time.slice(0, 5)}` : ''}
