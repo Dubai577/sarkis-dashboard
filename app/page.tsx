@@ -81,6 +81,13 @@ const LENSES: { value: Lens; label: string }[] = [
   { value: 'ongoing', label: 'Ongoing' },
 ]
 
+/** One day on, as a string, without dragging a timezone into it. */
+function nextDay(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
 function dateStateOf(c: Child): Lens {
   if (c.planned_date) return 'day'
   if (c.due_date) return 'due'
@@ -177,11 +184,25 @@ function DashboardView() {
     }
   }
 
-  /** Counts across every child, so a lens button shows what it will show. */
+  /**
+   * Counts across every leaf in the tree, so a lens button shows what it will
+   * show. This counted each project's direct children only, which was true
+   * when the board was two levels deep and became a lie the moment work lived
+   * inside departments: 160 assignments with due dates reported as "Due 1".
+   */
   const tally = useMemo(() => {
     const t: Record<Lens, number> = { all: 0, day: 0, due: 0, none: 0, ongoing: 0 }
-    for (const p of data?.projects ?? []) {
-      for (const c of p.children) { t.all++; t[dateStateOf(c)]++ }
+    const nodes = data?.tree ?? []
+    const holds = new Set(nodes.map(n => n.parent_id).filter(Boolean) as string[])
+    for (const n of nodes) {
+      // Containers are not work; counting them inflates every bucket.
+      if (!n.parent_id || n.isGroup === true || holds.has(n.id)) continue
+      t.all++
+      t[dateStateOf({
+        id: n.id, title: n.title, possession: n.possession,
+        planned_date: n.planned_date, due_date: n.due_date,
+        link: n.link, waiting: n.waiting, days: null, status: n.status,
+      })]++
     }
     return t
   }, [data])
@@ -251,6 +272,40 @@ function DashboardView() {
   const todayAll = [...data.todos].sort((a, b) =>
     Number(a.is_complete) - Number(b.is_complete)
     || (a.start_time ?? '').localeCompare(b.start_time ?? ''))
+
+  /**
+   * Dated work from the tree, which Today and This week never showed.
+   *
+   * Both blocks read the todos table alone. Coursework is items, so 160
+   * assignments with due dates were invisible here while showing up on the
+   * calendar and under All work — the dashboard disagreeing with itself about
+   * what today holds.
+   *
+   * Planned and due both qualify and are labelled differently: planned is when
+   * you meant to do it, due is when it is owed, and on this page the two are
+   * genuinely different answers to "what about today".
+   */
+  const datedOn = (from: string, to: string) => (data.tree ?? [])
+    .filter(n => n.parent_id && n.isGroup !== true)
+    .filter(n => n.progress !== 'done')
+    .map(n => {
+      const planned = n.planned_date && n.planned_date >= from && n.planned_date <= to
+      const due = n.due_date && n.due_date >= from && n.due_date <= to
+      if (!planned && !due) return null
+      return { node: n, when: (planned ? n.planned_date : n.due_date)!, kind: planned ? 'planned' as const : 'due' as const }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a!.when.localeCompare(b!.when) || a!.node.title.localeCompare(b!.node.title))
+
+  const itemsToday = datedOn(data.date, data.date) as { node: TreeNode; when: string; kind: 'planned' | 'due' }[]
+  const weekEnd = (() => {
+    const d = new Date(`${data.weekStart}T12:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + 6)
+    return d.toISOString().slice(0, 10)
+  })()
+  const itemsThisWeek = (datedOn(
+    data.date > data.weekStart ? nextDay(data.date) : data.weekStart, weekEnd,
+  ) as { node: TreeNode; when: string; kind: 'planned' | 'due' }[])
   const laterThisWeek = data.weekTodos
     .filter(t => !t.is_complete && t.task_date > data.date)
     .sort((a, b) => a.task_date.localeCompare(b.task_date))
@@ -264,27 +319,35 @@ function DashboardView() {
         <TimeBlock
           title="Today"
           when={mediumLabel(data.date)}
-          count={todayOpen.length}
+          count={todayOpen.length + itemsToday.length}
           href={`/calendar?view=day&date=${data.date}`}
         >
-          {todayAll.length === 0
+          {todayAll.length === 0 && itemsToday.length === 0
             ? <p className="py-1 text-[12px] text-ink-3">Nothing on today.</p>
             : todayAll.map(t => (
                 <TodoLine key={t.id} todo={t} onToggle={() => toggleTodo(t)} />
               ))}
+          {itemsToday.map(({ node, kind }) => (
+            <DatedItem key={node.id} node={node} kind={kind} tree={data.tree ?? []}
+                       onOpen={t => setActionTarget(t)} />
+          ))}
         </TimeBlock>
 
         <TimeBlock
           title="This week"
           when={`from ${mediumLabel(data.weekStart)}`}
-          count={laterThisWeek.length}
+          count={laterThisWeek.length + itemsThisWeek.length}
           href="/calendar?view=week"
         >
-          {laterThisWeek.length === 0
+          {laterThisWeek.length === 0 && itemsThisWeek.length === 0
             ? <p className="py-1 text-[12px] text-ink-3">Nothing else dated this week.</p>
             : laterThisWeek.map(t => (
                 <TodoLine key={t.id} todo={t} onToggle={() => toggleTodo(t)} showDay />
               ))}
+          {itemsThisWeek.map(({ node, kind }) => (
+            <DatedItem key={node.id} node={node} kind={kind} tree={data.tree ?? []}
+                       onOpen={t => setActionTarget(t)} />
+          ))}
         </TimeBlock>
       </div>
 
@@ -583,6 +646,61 @@ function TimeBlock({
       </div>
       {children}
     </section>
+  )
+}
+
+/**
+ * A dated item from the tree, shown in Today or This week.
+ *
+ * Carries the path it came from, because "Chapter 1: History of the Wheel"
+ * means nothing on a dashboard without the class attached, and the whole point
+ * of surfacing it here is to see it away from its own project.
+ *
+ * planned and due are marked differently and deliberately: planned is when you
+ * meant to do it, due is when it is owed, and treating them as one thing is
+ * exactly what this app spent its life avoiding.
+ */
+function DatedItem({
+  node, kind, tree, onOpen,
+}: {
+  node: TreeNode
+  kind: 'planned' | 'due'
+  tree: TreeNode[]
+  onOpen: (t: ActionTarget) => void
+}) {
+  const byId = new Map(tree.map(n => [n.id, n]))
+  const parts: string[] = []
+  let cursor = node.parent_id
+  const guard = new Set<string>()
+  while (cursor && !guard.has(cursor)) {
+    guard.add(cursor)
+    const p = byId.get(cursor)
+    if (!p) break
+    parts.unshift(p.title)
+    cursor = p.parent_id
+  }
+  // Deepest ancestor only: "MSE 2034 - Elem of Mat Eng", not the full chain.
+  const where = parts[parts.length - 1] ?? ''
+
+  return (
+    <div className="flex items-center gap-1.5 border-b border-line/60 py-1 last:border-b-0">
+      <span className={`shrink-0 rounded-sm px-1 text-[8.5px] uppercase tracking-wider ${
+        kind === 'due' ? 'bg-dropped-soft text-dropped' : 'bg-mine-soft text-mine'
+      }`}>
+        {kind}
+      </span>
+      <button
+        onClick={() => onOpen({
+          id: node.id, title: node.title, parent_id: node.parent_id,
+          planned_date: node.planned_date, due_date: node.due_date,
+          status: node.status, progress: node.progress ?? null,
+        })}
+        className="clamp-1 min-w-0 flex-1 text-left text-[12px]"
+      >
+        {node.title}
+      </button>
+      {where && <span className="clamp-1 shrink-0 max-w-[38%] text-[10px] text-ink-3">{where}</span>}
+    </div>
   )
 }
 
