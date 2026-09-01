@@ -31,6 +31,14 @@ eq('course extracted', mod.splitSummary('HW 1B [MSE_2034_88599_202609]'),
    { title: 'HW 1B', course: 'MSE 2034' })
 eq('no brackets survives', mod.splitSummary('Read chapter 4'),
    { title: 'Read chapter 4', course: null })
+eq('vccs dotted code', mod.splitSummary('Sect 1.6 [NR275.EGR.240.M1.FA26.TERM]'),
+   { title: 'Sect 1.6', course: 'EGR 240' })
+// NR275 is the campus, not a class. Reading it as subject NR number 275 files
+// every VCCS assignment under a course that does not exist.
+eq('campus prefix is not the course', mod.splitSummary('X [NR275.EGR.240.M1.FA26.TERM]').course,
+   'EGR 240')
+eq('double space in title collapsed', mod.splitSummary('HW:  Safety [NR275.EGR.240.M1.FA26.TERM]').title,
+   'HW: Safety')
 
 console.log('\n── times ──')
 const allDay = mod.parseIcs('BEGIN:VEVENT\nUID:a\nDTSTART;VALUE=DATE;VALUE=DATE:20260827\nSUMMARY:HW 1B [MSE_2034_1_2]\nEND:VEVENT')

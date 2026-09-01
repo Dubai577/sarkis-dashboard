@@ -56,16 +56,29 @@ export function unescapeText(value: string): string {
 }
 
 /**
- * Canvas suffixes every summary with the section code:
- *   "HW 1B [MSE_2034_88599_202609]"  ->  title "HW 1B", course "MSE 2034"
+ * Every summary carries a section code in brackets, and the two institutions
+ * spell it differently:
  *
- * The trailing CRN and term are noise on a dashboard; the subject and number
- * are what tell you which class it belongs to.
+ *   "HW 1B [MSE_2034_88599_202609]"                 Virginia Tech, underscores
+ *   "Sect 1.6 [NR275.EGR.240.M1.FA26.TERM]"         VCCS, dots, campus first
+ *
+ * Both reduce to "MSE 2034" and "EGR 240" — the subject and number are what
+ * say which class it is; the CRN, section and term are noise on a dashboard.
+ *
+ * The separator between letters and digits is required, not optional. Without
+ * it the campus prefix NR275 reads as subject "NR" number "275" and every
+ * VCCS assignment files itself under a class that does not exist.
  */
 export function splitSummary(summary: string): { title: string; course: string | null } {
-  const m = summary.match(/^(.*?)\s*\[([A-Za-z]+)_(\d+)_[^\]]*\]\s*$/)
-  if (!m) return { title: summary.trim(), course: null }
-  return { title: m[1].trim(), course: `${m[2]} ${m[3]}` }
+  const bracket = summary.match(/^(.*?)\s*\[([^\]]+)\]\s*$/)
+  if (!bracket) return { title: summary.replace(/\s+/g, ' ').trim(), course: null }
+
+  const title = bracket[1].replace(/\s+/g, ' ').trim()
+  const code = bracket[2].match(/([A-Za-z]{2,4})[._](\d{3,4})(?!\d)/)
+  return {
+    title,
+    course: code ? `${code[1].toUpperCase()} ${code[2]}` : null,
+  }
 }
 
 /**
