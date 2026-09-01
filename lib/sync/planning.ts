@@ -39,6 +39,8 @@ export const RULES: Record<string, PlanRule> = {
   'BMES 2004': { kind: 'weekday', weekday: 3 },
   'BMES 3004': { kind: 'weekday', weekday: 3 },
   'BMES 3224': { kind: 'weekday', weekday: 3 },
+  // Deadlines land Thu/Tue/Wed/Fri, all of which have a Monday before them.
+  'MSE 2034': { kind: 'weekday', weekday: 1 },
   // Work can be posted the same day, so there is no room for more than a day.
   'ISE 3434': { kind: 'offset', days: 1 },
   // Three days back puts a Sunday deadline on Thursday on its own, which is

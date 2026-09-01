@@ -56,8 +56,15 @@ eq('nothing planned on or after its due date', everyDay.filter(x => x.p >= x.due
 eq('(cases checked)', everyDay.length >= 150, true)
 console.log(`  ${everyDay.length} course/deadline combinations swept`)
 
+console.log('\n── Elem of Mat Eng: the Monday before ──')
+for (const due of ['2026-09-10', '2026-09-08', '2026-09-09', '2026-09-04']) {
+  const p = planFor('MSE 2034', due, 'HW')
+  eq(`due ${due} ${day(due)} -> ${p} ${day(p)}`, day(p), 'Mon')
+  eq('  and strictly before the deadline', p < due, true)
+}
+
 console.log('\n── unlisted classes fall back to two days ──')
-eq('MSE 2034 Thu deadline -> Tue', day(planFor('MSE 2034', '2026-09-10', 'HW')), 'Tue')
+eq('ISE 4644 Thu deadline -> Tue', day(planFor('ISE 4644', '2026-09-10', 'HW')), 'Tue')
 eq('ISE 4644 Tue deadline -> Sun becomes Thu', day(planFor('ISE 4644', '2026-09-08', 'HW')), 'Thu')
 
 console.log(`\n${fail === 0 ? '✅  planning rules verified' : `❌  ${fail} failed`}\n`)
