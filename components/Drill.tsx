@@ -42,6 +42,7 @@ export interface TreeNode {
    * need to walk into and fill.
    */
   isGroup?: boolean
+  progress?: 'in_progress' | 'done' | null
 }
 
 const PRIORITY_RANK: Record<string, number> = { Urgent: 0, Soon: 1, Whenever: 2, 'N/A': 3 }

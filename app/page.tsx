@@ -37,6 +37,7 @@ interface Child {
   planned_date: string | null; due_date: string | null
   link: string | null; waiting: string | null; days: number | null
   status?: string | null
+  progress?: 'in_progress' | 'done' | null
 }
 
 interface Project {
@@ -197,6 +198,7 @@ function DashboardView() {
     id: n.id, title: n.title, possession: n.possession,
     planned_date: n.planned_date, due_date: n.due_date,
     link: n.link, waiting: n.waiting, days: null, status: n.status,
+    progress: n.progress ?? null,
   })
 
   const groups = data.projects
@@ -587,8 +589,9 @@ function Chip({
   const target: ActionTarget = {
     id: child.id, title: child.title, parent_id: parentId,
     planned_date: child.planned_date, due_date: child.due_date,
-    status: child.status ?? null,
+    status: child.status ?? null, progress: child.progress ?? null,
   }
+  const done = child.progress === 'done'
   return (
     <span className="group inline-flex max-w-full items-center gap-1 rounded-full border border-line/40 bg-surface py-[3px] pl-2 pr-1 leading-none shadow-card hover:border-line">
       {/*
@@ -600,10 +603,17 @@ function Chip({
       */}
       <button
         onClick={() => onAction(target)}
-        className="clamp-1 min-w-0 text-left text-[12px] leading-tight"
+        className={`clamp-1 min-w-0 text-left text-[12px] leading-tight ${
+          done ? 'text-ink-3 line-through' : ''
+        }`}
       >
         {child.title}
       </button>
+      {child.progress === 'in_progress' && (
+        <span className="shrink-0 rounded-full bg-mine px-1 text-[8px] uppercase tracking-wider text-bg">
+          wip
+        </span>
+      )}
 
 
       {child.waiting && (

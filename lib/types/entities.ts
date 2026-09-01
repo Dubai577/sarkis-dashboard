@@ -80,6 +80,15 @@ export interface Item {
    * runs, reads yield undefined and the child count still decides.
    */
   is_group?: boolean
+  /**
+   * How far along: null (not started), 'in_progress', 'done'.
+   *
+   * Separate from `status`, which is legacy and means only "Ongoing" — that is
+   * a statement about scheduling, not progress, and one column cannot carry
+   * both without each corrupting the other. Separate from archived_at too:
+   * done means finished and still worth seeing; archived means put away.
+   */
+  progress?: 'in_progress' | 'done' | null
 
   waiting_on: Uuid | null
   waiting_since: IsoDate | null

@@ -26,6 +26,7 @@ interface Row {
   title: string
   priority: string | null
   status: string | null
+  progress: 'in_progress' | 'done' | null
   planned_date: string | null
   due_date: string | null
   waiting_on: string | null
@@ -402,6 +403,9 @@ export function Grid() {
               {header('title', 'Name', 'min-w-[220px]')}
               {header('under', 'Under', 'w-[150px]')}
               {header('priority', 'Urgency', 'w-[92px]')}
+              <th className="sticky top-0 z-10 w-[104px] border-b border-line bg-surface px-1.5 py-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-ink-3">
+                Progress
+              </th>
               {header('planned_date', 'Planned', 'w-[126px]')}
               {header('due_date', 'Due', 'w-[126px]')}
               <th className="sticky top-0 z-10 w-[112px] border-b border-line bg-surface px-1.5 py-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-ink-3">
@@ -456,7 +460,9 @@ export function Grid() {
                           if (e.key === 'ArrowDown' && e.metaKey) moveFocus(index, 1)
                           if (e.key === 'ArrowUp' && e.metaKey) moveFocus(index, -1)
                         }}
-                        className={`${field} ${isGroup ? 'font-medium' : ''}`}
+                        className={`${field} ${isGroup ? 'font-medium' : ''} ${
+                          r.progress === 'done' ? 'text-ink-3 line-through' : ''
+                        }`}
                       />
                       {isGroup && (
                         <span className="shrink-0 text-[9px] tnum text-ink-3">{r.child_count}</span>
@@ -505,6 +511,20 @@ export function Grid() {
                     >
                       <option value="">—</option>
                       {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </td>
+
+                  <td className={cell}>
+                    <select
+                      value={r.progress ?? ''}
+                      onChange={e => patch(r.id, { progress: e.target.value || null })}
+                      className={`${field} ${
+                        r.progress === 'done' ? 'text-done' : r.progress === 'in_progress' ? 'text-mine' : ''
+                      }`}
+                    >
+                      <option value="">Not started</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="done">Done</option>
                     </select>
                   </td>
 
@@ -580,7 +600,7 @@ export function Grid() {
                   {groups.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
                 </select>
               </td>
-              <td className={cell} colSpan={5} />
+              <td className={cell} colSpan={6} />
             </tr>
           </tbody>
         </table>

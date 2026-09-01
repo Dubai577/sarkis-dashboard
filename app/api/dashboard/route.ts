@@ -238,6 +238,7 @@ export async function GET() {
         // Marked a container, or holding one. An empty department has to read
         // and behave as a department, otherwise it is a task you cannot open.
         isGroup: i.is_group_view,
+        progress: i.progress ?? null,
       })),
       projects,
       school,

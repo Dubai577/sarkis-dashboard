@@ -19,9 +19,12 @@ import type { TreeNode } from '@/components/Drill'
  * so they are two fields, never one.
  */
 
+export type Progress = 'in_progress' | 'done' | null
+
 export interface ActionTarget {
   id: string
   title: string
+  progress?: Progress
   parent_id?: string | null
   planned_date: string | null
   due_date: string | null
@@ -101,6 +104,7 @@ export function ItemActions({
         planned_date: live.planned_date,
         due_date: live.due_date,
         status: live.status,
+        progress: live.progress ?? null,
       }
     : item
 
@@ -212,6 +216,42 @@ export function ItemActions({
                   ? `A department under ${byId.get(current.parent_id ?? '')?.title ?? '— pick one below'}. It can hold its own tasks.`
                   : `Under ${byId.get(current.parent_id ?? '')?.title ?? '— pick one below'}. Pick a department below and it is a task under a sub-project.`}
           </p>
+        </section>
+
+        {/*
+          ── how far along ──
+
+          Done is not archived. Done means you finished it and want to see
+          that you did; archived means put it away. A finished task stays on
+          the board struck through until you archive it — the same reason a
+          ticked todo now stays on Today rather than vanishing.
+        */}
+        <section>
+          <span className="mb-1.5 block text-[10px] uppercase tracking-wider text-ink-3">
+            Progress
+          </span>
+          <div className="flex gap-1">
+            {([
+              [null, 'Not started'],
+              ['in_progress', 'In progress'],
+              ['done', 'Done'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={label}
+                disabled={busy}
+                onClick={() => patch({ progress: value })}
+                className={`flex-1 rounded-md border py-1.5 text-[11px] ${
+                  (current.progress ?? null) === value
+                    ? value === 'done'
+                      ? 'border-done bg-done-soft text-done'
+                      : 'border-mine bg-mine-soft text-mine'
+                    : 'border-line text-ink-2'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </section>
 
         {/* ── the two dates, which are two different facts ── */}
