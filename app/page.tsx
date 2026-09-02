@@ -119,6 +119,14 @@ function DashboardView() {
    * the rest is one click away per class rather than always underfoot.
    */
   const [openedFully, setOpenedFully] = useState<Set<string>>(new Set())
+  /**
+   * How rows are ordered inside a single day.
+   *
+   * A day is a bag of a dozen things from five classes, and which order they
+   * are in changes what the list is for: by deadline it is triage, by class it
+   * is a work session, by name it is a lookup.
+   */
+  const [daySort, setDaySort] = useState<'due' | 'class' | 'name'>('due')
   const groupRefs = useRef<Record<string, HTMLElement | null>>({})
 
   /**
@@ -339,6 +347,48 @@ function DashboardView() {
    * of blanks is noise, and the gap between two headers already says the day
    * is free.
    */
+  /**
+   * One list per day, whatever a row came from.
+   *
+   * Todos and items were rendered as two blocks, so a day was implicitly
+   * sorted "everything materialised, then everything else" — an ordering that
+   * means nothing to anyone. Merged, a day can be ordered by the thing you
+   * actually want.
+   */
+  type DayRow = {
+    key: string
+    todo?: Todo
+    item?: { node: TreeNode; kind: 'planned' | 'due' }
+    due: string
+    cls: string
+    name: string
+  }
+
+  const toRows = (todos: Todo[], items: typeof itemsToday): DayRow[] => {
+    const nodes = data.tree ?? []
+    const rows: DayRow[] = todos.map(t => {
+      const src = t.source_item_id ? nodes.find(n => n.id === t.source_item_id) : undefined
+      const parent = src?.parent_id ? nodes.find(n => n.id === src.parent_id) : undefined
+      return {
+        key: `t-${t.id}`, todo: t,
+        // A blank deadline sorts last, never first: no date is not "urgent".
+        due: src?.due_date ?? '9999-12-31',
+        cls: parent?.title ?? '￿', name: t.title,
+      }
+    })
+    for (const it of items) {
+      const parent = it.node.parent_id ? nodes.find(n => n.id === it.node.parent_id) : undefined
+      rows.push({
+        key: `i-${it.node.id}`, item: it,
+        due: it.node.due_date ?? '9999-12-31',
+        cls: parent?.title ?? '￿', name: it.node.title,
+      })
+    }
+    const by = daySort === 'due' ? 'due' : daySort === 'class' ? 'cls' : 'name'
+    return rows.sort((a, b) =>
+      a[by].localeCompare(b[by]) || a.name.localeCompare(b.name))
+  }
+
   const weekByDay = (() => {
     const buckets = new Map<string, { todos: Todo[]; items: typeof itemsThisWeek }>()
     const bucket = (d: string) => {
@@ -356,6 +406,21 @@ function DashboardView() {
       {error && <div className="mb-2"><ErrorBanner message={error} onRetry={load} /></div>}
 
       {/* ── time: the two questions with an answer today ── */}
+      <div className="mb-1 flex items-center gap-1.5">
+        <span className="text-[10px] uppercase tracking-wider text-ink-3">Order each day by</span>
+        {([['due', 'Deadline'], ['class', 'Class'], ['name', 'Name']] as const).map(([v, label]) => (
+          <button
+            key={v}
+            onClick={() => setDaySort(v)}
+            className={`rounded-full border px-2 py-px text-[10.5px] ${
+              daySort === v ? 'border-mine bg-mine-soft text-mine' : 'border-line text-ink-2'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="mb-3 grid gap-3 sm:grid-cols-2">
         <TimeBlock
           title="Today"
@@ -363,16 +428,19 @@ function DashboardView() {
           count={todayOpen.length + itemsToday.length}
           href={`/calendar?view=day&date=${data.date}`}
         >
-          {todayAll.length === 0 && itemsToday.length === 0
-            ? <p className="py-1 text-[12px] text-ink-3">Nothing on today.</p>
-            : todayAll.map(t => (
-                <TodoLine key={t.id} todo={t} onToggle={() => toggleTodo(t)}
+          {todayAll.length === 0 && itemsToday.length === 0 ? (
+            <p className="py-1 text-[12px] text-ink-3">Nothing on today.</p>
+          ) : (
+            toRows(todayAll, itemsToday).map(r =>
+              r.todo ? (
+                <TodoLine key={r.key} todo={r.todo} onToggle={() => toggleTodo(r.todo!)}
                           tree={data.tree ?? []} today={data.date} />
-              ))}
-          {itemsToday.map(({ node, kind }) => (
-            <DatedItem key={node.id} node={node} kind={kind} tree={data.tree ?? []}
-                       onOpen={t => setActionTarget(t)} />
-          ))}
+              ) : (
+                <DatedItem key={r.key} node={r.item!.node} kind={r.item!.kind}
+                           tree={data.tree ?? []} onOpen={t => setActionTarget(t)} />
+              ),
+            )
+          )}
         </TimeBlock>
 
         <TimeBlock
@@ -385,25 +453,30 @@ function DashboardView() {
             <p className="py-1 text-[12px] text-ink-3">Nothing else dated this week.</p>
           ) : (
             weekByDay.map(([date, { todos, items }]) => (
-              <div key={date} className="mb-1 last:mb-0">
-                <div className="flex items-baseline gap-1.5 border-b border-line/70 pb-px">
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-ink-2">
+              <section key={date} className="mb-2 last:mb-0">
+                {/* A day needs to announce itself. A hairline rule and 10px
+                    grey read as another row, which is why a wall of thirteen
+                    assignments looked like one undifferentiated list. */}
+                <div className="sticky top-0 z-10 -mx-2 mb-0.5 flex items-baseline gap-2
+                                border-y border-line bg-surface-2 px-2 py-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-ink">
                     {DAY_NAMES[dayIndex(date)]}
                   </span>
-                  <span className="text-[10px] tnum text-ink-3">{mediumLabel(date)}</span>
-                  <span className="ml-auto text-[10px] tnum text-ink-3">
+                  <span className="text-[10.5px] tnum text-ink-2">{mediumLabel(date)}</span>
+                  <span className="ml-auto rounded-full bg-surface-3 px-1.5 text-[10px] tnum text-ink-2">
                     {todos.length + items.length}
                   </span>
                 </div>
-                {todos.map(t => (
-                  <TodoLine key={t.id} todo={t} onToggle={() => toggleTodo(t)}
-                            tree={data.tree ?? []} today={data.date} />
-                ))}
-                {items.map(({ node, kind }) => (
-                  <DatedItem key={node.id} node={node} kind={kind} tree={data.tree ?? []}
-                             onOpen={t => setActionTarget(t)} />
-                ))}
-              </div>
+                {toRows(todos, items).map(r =>
+                  r.todo ? (
+                    <TodoLine key={r.key} todo={r.todo} onToggle={() => toggleTodo(r.todo!)}
+                              tree={data.tree ?? []} today={data.date} />
+                  ) : (
+                    <DatedItem key={r.key} node={r.item!.node} kind={r.item!.kind}
+                               tree={data.tree ?? []} onOpen={t => setActionTarget(t)} />
+                  ),
+                )}
+              </section>
             ))
           )}
         </TimeBlock>
@@ -753,11 +826,14 @@ function DatedItem({
           planned_date: node.planned_date, due_date: node.due_date,
           status: node.status, progress: node.progress ?? null,
         })}
-        className="clamp-1 min-w-0 flex-1 text-left text-[12px]"
+        className="min-w-0 flex-1 truncate text-left text-[12.5px]"
+        title={node.title}
       >
         {node.title}
       </button>
-      {where && <span className="clamp-1 shrink-0 max-w-[38%] text-[10px] text-ink-3">{where}</span>}
+      {where && (
+        <span className="max-w-[40%] shrink truncate text-[10px] text-ink-3" title={where}>{where}</span>
+      )}
     </div>
   )
 }
@@ -792,9 +868,9 @@ function TodoLine({
   return (
     <div className="flex items-center gap-1.5 border-b border-line/60 py-1 last:border-b-0">
       <Check checked={todo.is_complete} onChange={onToggle} label={`Complete ${todo.title}`} />
-      <span className={`clamp-1 min-w-0 flex-1 text-[12px] ${
+      <span className={`min-w-0 flex-1 truncate text-[12.5px] ${
         todo.is_complete ? 'text-ink-3 line-through' : ''
-      }`}>
+      }`} title={todo.title}>
         {todo.title}
       </span>
 
@@ -814,7 +890,9 @@ function TodoLine({
       )}
 
       {parent && (
-        <span className="clamp-1 max-w-[34%] shrink-0 text-[10px] text-ink-3">{parent.title}</span>
+        <span className="max-w-[40%] shrink truncate text-[10px] text-ink-3" title={parent.title}>
+          {parent.title}
+        </span>
       )}
 
       <span className="shrink-0 text-[10px] tnum text-ink-3">
