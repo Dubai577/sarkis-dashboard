@@ -99,10 +99,16 @@ function CalendarView() {
   useEffect(() => { load() }, [load])
 
   /** Navigation preserves every other param, including the filters. */
-  const go = (next: Partial<{ view: View; date: string }>) => {
+  const go = (next: Partial<{ view: View; date: string; dates: 'plan' | 'due' | 'both' }>) => {
     const p = new URLSearchParams(params.toString())
     if (next.view) p.set('view', next.view)
     if (next.date) p.set('date', next.date)
+    // 'plan' is the default, so it stays out of the URL rather than pinning
+    // the default into every link someone copies.
+    if (next.dates) {
+      if (next.dates === 'plan') p.delete('dates')
+      else p.set('dates', next.dates)
+    }
     router.replace(`${pathname}?${p}`, { scroll: false })
   }
 
@@ -118,6 +124,20 @@ function CalendarView() {
     () => new Map((data?.categories ?? []).map(c => [c.id, c])),
     [data?.categories],
   )
+
+  /**
+   * Which of an item's two dates get a mark.
+   *
+   * Every assignment carries a planned date and a deadline, so drawing both
+   * put 302 marks on a calendar holding 151 things — the crowding is the
+   * duplication. 'plan' is the default because the planned date is the one you
+   * act on; the deadline is already accounted for in having chosen it.
+   *
+   * A deadline still appears when it is the only fact there is: an exam, which
+   * is deliberately never planned, or something posted since the last sync. So
+   * nothing with a real date ever vanishes from the calendar.
+   */
+  const dates = (params.get('dates') as 'plan' | 'due' | 'both') || 'plan'
 
   /** Everything on a date, todos and dated items together. */
   const entriesByDate = useMemo(() => {
@@ -138,13 +158,18 @@ function CalendarView() {
     for (const i of data?.items ?? []) {
       const color = i.category_id ? catById.get(i.category_id)?.color ?? null : null
       // A planned date and a deadline are different marks on the calendar.
-      if (i.planned_date && i.planned_date >= from && i.planned_date <= to) {
+      const showPlanned = dates !== 'due'
+      // In plan mode a deadline is drawn only when nothing is planned for it,
+      // which is exactly the exams and anything not yet planned.
+      const showDue = dates === 'due' || dates === 'both' || !i.planned_date
+
+      if (showPlanned && i.planned_date && i.planned_date >= from && i.planned_date <= to) {
         push(i.planned_date, {
           id: `p-${i.id}`, title: i.title, kind: 'item',
           color, complete: false, possession: i.possession,
         })
       }
-      if (i.due_date && i.due_date >= from && i.due_date <= to) {
+      if (showDue && i.due_date && i.due_date >= from && i.due_date <= to) {
         push(i.due_date, {
           id: `d-${i.id}`, title: i.title, kind: 'deadline',
           color, complete: false, possession: i.possession,
@@ -152,7 +177,7 @@ function CalendarView() {
       }
     }
     return map
-  }, [data, catById, from, to])
+  }, [data, catById, from, to, dates])
 
   /** Filters apply to what the cells show, not to what is loaded. */
   const visible = useCallback(
@@ -225,6 +250,26 @@ function CalendarView() {
                   }`}>Today</button>
           <button onClick={() => step(1)} aria-label="Next"
                   className="rounded-md border border-line px-2 py-1 text-sm text-ink-2">›</button>
+        </div>
+
+        <div className="mb-1.5 flex items-center gap-1">
+          <span className="mr-0.5 text-[10px] uppercase tracking-wider text-ink-3">Show</span>
+          {([
+            ['plan', 'Plan', 'Planned dates, plus deadlines with no plan — exams and anything new'],
+            ['due', 'Deadlines', 'Due dates only'],
+            ['both', 'Both', 'Every date on every item'],
+          ] as const).map(([v, label, hint]) => (
+            <button
+              key={v}
+              onClick={() => go({ dates: v })}
+              title={hint}
+              className={`rounded-full border px-2 py-px text-[11px] ${
+                dates === v ? 'border-mine bg-mine-soft text-mine' : 'border-line text-ink-2'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         <div className="flex gap-1">
