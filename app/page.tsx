@@ -398,6 +398,8 @@ function DashboardView() {
     key: string
     todo?: Todo
     item?: { node: TreeNode; kind: 'planned' | 'due' }
+    /** Finished and past its two-second hold, so it belongs at the bottom. */
+    done: boolean
     due: string
     cls: string
     name: string
@@ -409,7 +411,7 @@ function DashboardView() {
       const src = t.source_item_id ? nodes.find(n => n.id === t.source_item_id) : undefined
       const parent = src?.parent_id ? nodes.find(n => n.id === src.parent_id) : undefined
       return {
-        key: `t-${t.id}`, todo: t,
+        key: `t-${t.id}`, todo: t, done: settled(t),
         // A blank deadline sorts last, never first: no date is not "urgent".
         due: src?.due_date ?? '9999-12-31',
         cls: parent?.title ?? '￿', name: t.title,
@@ -418,14 +420,25 @@ function DashboardView() {
     for (const it of items) {
       const parent = it.node.parent_id ? nodes.find(n => n.id === it.node.parent_id) : undefined
       rows.push({
-        key: `i-${it.node.id}`, item: it,
+        key: `i-${it.node.id}`, item: it, done: it.node.progress === 'done',
         due: it.node.due_date ?? '9999-12-31',
         cls: parent?.title ?? '￿', name: it.node.title,
       })
     }
     const by = daySort === 'due' ? 'due' : daySort === 'class' ? 'cls' : 'name'
+    /**
+     * Finished work sinks, whatever the chosen order.
+     *
+     * This sorted by the chosen key alone, which threw away the completed-last
+     * ordering the caller had already applied — so ticked rows stayed scattered
+     * through the list and the two-second settle had nothing to settle into.
+     * Done-ness outranks every other key: a finished thing is not competing for
+     * attention with an unfinished one, whatever their deadlines say.
+     */
     return rows.sort((a, b) =>
-      a[by].localeCompare(b[by]) || a.name.localeCompare(b.name))
+      Number(a.done) - Number(b.done)
+      || a[by].localeCompare(b[by])
+      || a.name.localeCompare(b.name))
   }
 
   const weekByDay = (() => {
