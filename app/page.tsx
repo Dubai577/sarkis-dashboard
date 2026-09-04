@@ -127,6 +127,16 @@ function DashboardView() {
    * is a work session, by name it is a lookup.
    */
   const [daySort, setDaySort] = useState<'due' | 'class' | 'name'>('due')
+  /**
+   * Ticked in the last couple of seconds, and therefore still in place.
+   *
+   * Sorting completed rows to the bottom the instant the box is checked makes
+   * the row you just clicked leap away under the cursor — you lose your place,
+   * and an accidental tick is hard to find again to undo. Holding it for two
+   * seconds lets the strike-through register as a result of what you did
+   * before the list rearranges itself.
+   */
+  const [justChecked, setJustChecked] = useState<Set<string>>(new Set())
   const groupRefs = useRef<Record<string, HTMLElement | null>>({})
 
   /**
@@ -184,7 +194,35 @@ function DashboardView() {
     if (!data) return
     const next = !todo.is_complete
     const patch = (l: Todo[]) => l.map(t => (t.id === todo.id ? { ...t, is_complete: next } : t))
-    setData({ ...data, todos: patch(data.todos), weekTodos: patch(data.weekTodos) })
+
+    /**
+     * The row strikes through immediately and moves two seconds later.
+     *
+     * The tick is the feedback; the reordering is the consequence. Doing both
+     * at once means the thing you just clicked leaps out from under the cursor
+     * before you have seen it register — and an accidental tick becomes hard to
+     * find again to undo.
+     */
+    const settle = () =>
+      setTimeout(() => setJustChecked(prev => {
+        const n = new Set(prev)
+        n.delete(todo.id)
+        return n
+      }), 2000)
+
+    if (next) {
+      setJustChecked(prev => new Set(prev).add(todo.id))
+      settle()
+    } else {
+      setJustChecked(prev => { const n = new Set(prev); n.delete(todo.id); return n })
+    }
+
+    // The source item carries the same completion, so anywhere it appears
+    // outside the day view strikes through with it.
+    const tree = (data.tree ?? []).map(n =>
+      n.id === todo.source_item_id ? { ...n, progress: next ? 'done' as const : null } : n)
+    setData({ ...data, todos: patch(data.todos), weekTodos: patch(data.weekTodos), tree })
+
     try {
       const res = await fetch(`/api/todos/${todo.id}/complete`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -282,8 +320,9 @@ function DashboardView() {
    * through. Done work stays on today, struck through, and sinks below what is
    * still open. Tapping it again puts it back.
    */
+  const settled = (t: Todo) => t.is_complete && !justChecked.has(t.id)
   const todayAll = [...data.todos].sort((a, b) =>
-    Number(a.is_complete) - Number(b.is_complete)
+    Number(settled(a)) - Number(settled(b))
     || (a.start_time ?? '').localeCompare(b.start_time ?? ''))
 
   /**

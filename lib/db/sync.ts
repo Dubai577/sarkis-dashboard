@@ -142,8 +142,20 @@ export async function setTodoComplete(todoId: string, complete: boolean) {
   if (writeErr) throw writeErr
 
   if (todo.source_item_id) {
+    /**
+     * Write progress, not status.
+     *
+     * This set status to 'Done' / 'Working on it' — the legacy column from
+     * sarkis_tasks that nothing reads and that migration 017 replaced. So
+     * ticking a task off the day left the item itself looking untouched
+     * everywhere else: the same commitment disagreeing with itself, which is
+     * the exact failure this single write path exists to prevent.
+     *
+     * Worse, status is also where 'Ongoing' lives. Writing 'Done' over it
+     * silently erased the fact that something was deliberately undated.
+     */
     await db.from('items')
-      .update({ status: complete ? 'Done' : 'Working on it' })
+      .update({ progress: complete ? 'done' : null })
       .eq('id', todo.source_item_id)
   }
 
