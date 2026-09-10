@@ -190,6 +190,29 @@ function DashboardView() {
     router.replace(p.toString() ? `${pathname}?${p}` : pathname, { scroll: false })
   }
 
+  /**
+   * Put something straight on a day.
+   *
+   * Capture asks what kind of thing it is and where it belongs, which is the
+   * right question for something you are filing and the wrong one for "call
+   * the pharmacy today". This makes a plain dated task and nothing else.
+   */
+  async function addTodo(date: string, title: string) {
+    const text = title.trim()
+    if (!text) return
+    try {
+      const res = await fetch('/api/capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, target: 'todo', task_date: date }),
+      })
+      if (!res.ok) throw new Error('Could not add that.')
+      load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not add that.')
+    }
+  }
+
   async function toggleTodo(todo: Todo) {
     if (!data) return
     const next = !todo.is_complete
@@ -480,13 +503,14 @@ function DashboardView() {
           count={todayOpen.length + itemsToday.length}
           href={`/calendar?view=day&date=${data.date}`}
         >
+          <AddToDay date={data.date} onAdd={addTodo} />
           {todayAll.length === 0 && itemsToday.length === 0 ? (
             <p className="py-1 text-[12px] text-ink-3">Nothing on today.</p>
           ) : (
             toRows(todayAll, itemsToday).map(r =>
               r.todo ? (
                 <TodoLine key={r.key} todo={r.todo} onToggle={() => toggleTodo(r.todo!)}
-                          tree={data.tree ?? []} today={data.date} />
+                          tree={data.tree ?? []} today={data.date} onEdit={setActionTarget} />
               ) : (
                 <DatedItem key={r.key} node={r.item!.node} kind={r.item!.kind}
                            tree={data.tree ?? []} onOpen={t => setActionTarget(t)} />
@@ -519,10 +543,11 @@ function DashboardView() {
                     {todos.length + items.length}
                   </span>
                 </div>
+                <AddToDay date={date} onAdd={addTodo} />
                 {toRows(todos, items).map(r =>
                   r.todo ? (
                     <TodoLine key={r.key} todo={r.todo} onToggle={() => toggleTodo(r.todo!)}
-                              tree={data.tree ?? []} today={data.date} />
+                              tree={data.tree ?? []} today={data.date} onEdit={setActionTarget} />
                   ) : (
                     <DatedItem key={r.key} node={r.item!.node} kind={r.item!.kind}
                                tree={data.tree ?? []} onOpen={t => setActionTarget(t)} />
@@ -890,11 +915,49 @@ function DatedItem({
   )
 }
 
+/** A single field that puts a plain task on one specific day. */
+function AddToDay({
+  date, onAdd,
+}: {
+  date: string
+  onAdd: (date: string, title: string) => void
+}) {
+  const [text, setText] = useState('')
+  const [open, setOpen] = useState(false)
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+              className="mb-0.5 text-[10.5px] text-ink-3 hover:text-mine">
+        + add to this day
+      </button>
+    )
+  }
+
+  return (
+    <input
+      autoFocus
+      value={text}
+      onChange={e => setText(e.target.value)}
+      onKeyDown={e => {
+        if (e.key === 'Enter' && text.trim()) { onAdd(date, text); setText(''); setOpen(false) }
+        if (e.key === 'Escape') { setText(''); setOpen(false) }
+      }}
+      onBlur={() => { if (!text.trim()) setOpen(false) }}
+      placeholder="Add a task, Enter to save"
+      className="mb-1 w-full rounded-sm border border-line bg-surface-2 px-1.5 py-[3px] text-[11.5px]
+                 outline-none placeholder:text-ink-3 focus:border-mine"
+    />
+  )
+}
+
 function TodoLine({
-  todo, onToggle, showDay, tree = [], today,
+  todo, onToggle, showDay, tree = [], today, onEdit,
 }: {
   todo: Todo; onToggle: () => void; showDay?: boolean
   tree?: TreeNode[]; today?: string
+  /** Opens the item behind this task, when there is one. */
+  onEdit?: (t: ActionTarget) => void
 }) {
   /**
    * A materialised item carries context a bare todo does not: which class it
@@ -939,6 +1002,27 @@ function TodoLine({
         }`} title={`Due ${mediumLabel(source!.due_date!)}`}>
           due {dueIn < 0 ? `${Math.abs(dueIn)}d ago` : `in ${dueIn}d`}
         </span>
+      )}
+
+      {/*
+        A task on the day is the same commitment as the item behind it, so it
+        opens the same editor. Without this the day view was the one surface
+        where you could tick something off but not change it — and it is the
+        surface you look at most.
+      */}
+      {onEdit && source && (
+        <button
+          onClick={() => onEdit({
+            id: source.id, title: source.title, parent_id: source.parent_id,
+            planned_date: source.planned_date, due_date: source.due_date,
+            status: source.status, progress: source.progress ?? null,
+          })}
+          aria-label={`Edit ${todo.title}`}
+          title="Edit — dates, where it lives, progress"
+          className="shrink-0 rounded p-0.5 text-ink-3 opacity-60 hover:text-mine hover:opacity-100"
+        >
+          <PencilIcon size={11} />
+        </button>
       )}
 
       {parent && (

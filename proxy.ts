@@ -26,6 +26,8 @@ const PUBLIC_PREFIXES = [
   '/api/send-morning',   // cron — CRON_SECRET
   '/api/send-weekly',    // cron — CRON_SECRET
   '/api/cron',           // cron — CRON_SECRET
+  '/api/feed',           // calendar subscription — FEED_TOKEN in the URL,
+                         // because Google Calendar cannot hold a session
 ]
 
 function isPublic(pathname: string): boolean {
