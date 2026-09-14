@@ -23,7 +23,7 @@
     },
     {
       "path": "/api/cron/exec-portal",
-      "schedule": "0 * * * *"
+      "schedule": "30 9 * * *"
     }
   ]
 }
