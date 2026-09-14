@@ -206,9 +206,24 @@ export async function GET() {
 
     const done = new Set((checksRes.data ?? []).map(c => c.routine_id))
 
+    /**
+     * Exec-portal comments, from their own table. Tolerates the table not
+     * existing yet (migration 019) — the dashboard must render either way.
+     */
+    const execRes = await db
+      .from('exec_portal_updates')
+      .select('id,task_id,task_title,author_name,note,created_at')
+      .order('created_at', { ascending: false })
+      .limit(8)
+    const execPortal = {
+      updates: execRes.error ? [] : (execRes.data ?? []),
+      available: !execRes.error,
+    }
+
     return NextResponse.json({
       date: now,
       weekStart: start,
+      execPortal,
       todos: todayRes.data ?? [],
       overdueCount: overdueRes.data?.length ?? 0,
       droppedCount: items.filter(i => i.possession === 'dropped').length,

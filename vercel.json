@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/urgent",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/exec-portal",
+      "schedule": "30 9 * * *"
     }
   ]
 }

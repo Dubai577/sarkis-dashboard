@@ -11,7 +11,7 @@ import { ItemActions, ActionChip, type ActionTarget } from '@/components/ItemAct
 import {
   ChevronDownIcon, ChevronUpIcon, ExternalIcon, PencilIcon,
 } from '@/components/ui/Icon'
-import { dayIndex, DAY_NAMES, mediumLabel } from '@/lib/dates'
+import { dayIndex, DAY_NAMES, mediumLabel, relativeTime } from '@/lib/dates'
 
 /**
  * The dashboard — one tab, all of it, visible at once.
@@ -61,9 +61,15 @@ interface Todo {
   roll_count?: number | null
 }
 
+interface ExecUpdate {
+  id: string; task_id: string; task_title: string
+  author_name: string | null; note: string; created_at: string
+}
+
 interface Payload {
   date: string
   weekStart: string
+  execPortal?: { updates: ExecUpdate[]; available: boolean }
   todos: Todo[]
   weekTodos: Todo[]
   overdueCount: number
@@ -495,6 +501,45 @@ function DashboardView() {
           </button>
         ))}
       </div>
+
+      {/*
+        Comments from the exec portal. Not tasks: a comment has no date, no
+        plan and no completion, so it gets its own panel rather than a row on
+        the board. Newest first, capped, and hidden entirely when the table has
+        not been created yet — an empty panel announcing an unrun migration
+        is not a dashboard.
+      */}
+      {data.execPortal?.available && (
+        <div className="mb-3">
+          <TimeBlock
+            title="Exec portal"
+            when="recent comments"
+            count={data.execPortal.updates.length}
+            href="https://occmvt.vercel.app/exec/tasks"
+          >
+            {data.execPortal.updates.length === 0 ? (
+              <p className="py-1 text-[12px] text-ink-3">No recent comments.</p>
+            ) : (
+              data.execPortal.updates.slice(0, 8).map(u => (
+                <div key={u.id} className="border-b border-line/60 py-1 last:border-b-0">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="shrink-0 text-[11px] font-medium text-ink">
+                      {u.author_name ?? 'Someone'}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[10.5px] text-ink-3" title={u.task_title}>
+                      on {u.task_title}
+                    </span>
+                    <span className="shrink-0 text-[10px] tnum text-ink-3">
+                      {relativeTime(u.created_at)}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[12px] leading-snug text-ink-2">{u.note}</p>
+                </div>
+              ))
+            )}
+          </TimeBlock>
+        </div>
+      )}
 
       <div className="mb-3 grid gap-3 sm:grid-cols-2">
         <TimeBlock
