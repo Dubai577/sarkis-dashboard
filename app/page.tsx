@@ -367,6 +367,10 @@ function DashboardView() {
     (n, g) => n + g.loose.length + g.departments.reduce((m, d) => m + d.rows.length, 0),
     0,
   )
+  const twoWeeksAgo = Date.now() - 14 * 86400000
+  const recentExec = (data.execPortal?.updates ?? [])
+    .filter(u => Date.parse(u.created_at) >= twoWeeksAgo)
+
   const todayOpen = data.todos.filter(t => !t.is_complete)
   /**
    * Ticking something off made it vanish, which reads as "did that delete it?"
@@ -537,45 +541,6 @@ function DashboardView() {
         ))}
       </div>
 
-      {/*
-        Comments from the exec portal. Not tasks: a comment has no date, no
-        plan and no completion, so it gets its own panel rather than a row on
-        the board. Newest first, capped, and hidden entirely when the table has
-        not been created yet — an empty panel announcing an unrun migration
-        is not a dashboard.
-      */}
-      {data.execPortal?.available && (
-        <div className="mb-3">
-          <TimeBlock
-            title="Exec portal"
-            when="recent comments"
-            count={data.execPortal.updates.length}
-            href="https://occmvt.vercel.app/exec/tasks"
-          >
-            {data.execPortal.updates.length === 0 ? (
-              <p className="py-1 text-[12px] text-ink-3">No recent comments.</p>
-            ) : (
-              data.execPortal.updates.slice(0, 8).map(u => (
-                <div key={u.id} className="border-b border-line/60 py-1 last:border-b-0">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="shrink-0 text-[11px] font-medium text-ink">
-                      {u.author_name ?? 'Someone'}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-[10.5px] text-ink-3" title={u.task_title}>
-                      on {u.task_title}
-                    </span>
-                    <span className="shrink-0 text-[10px] tnum text-ink-3">
-                      {relativeTime(u.created_at)}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-[12px] leading-snug text-ink-2">{u.note}</p>
-                </div>
-              ))
-            )}
-          </TimeBlock>
-        </div>
-      )}
-
       <div className="mb-3 grid gap-3 sm:grid-cols-2">
         <TimeBlock
           title="Today"
@@ -638,6 +603,44 @@ function DashboardView() {
           )}
         </TimeBlock>
       </div>
+
+      {/*
+        Comments from the exec portal — recent ones only.
+
+        This sat at the top of the page, full width, showing every stored
+        comment including a month-old thread. Up there, with no framing, it
+        read as a stray text box. It sits under the day view now, shows only
+        the last two weeks, and disappears entirely when there is nothing
+        recent: an empty or stale panel is noise, not information.
+      */}
+      {data.execPortal?.available && recentExec.length > 0 && (
+        <div className="mb-3">
+          <TimeBlock
+            title="Exec team comments"
+            when="last 14 days"
+            count={recentExec.length}
+            href="https://occmvt.vercel.app/exec/tasks"
+          >
+            {recentExec.slice(0, 8).map(u => (
+              <div key={u.id} className="border-b border-line/60 py-1 last:border-b-0">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="shrink-0 text-[11px] font-medium text-ink">
+                    {u.author_name ?? 'Someone'}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[10.5px] text-ink-3" title={u.task_title}>
+                    on {u.task_title}
+                  </span>
+                  <span className="shrink-0 text-[10px] tnum text-ink-3">
+                    {relativeTime(u.created_at)}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[12px] leading-snug text-ink-2">{u.note}</p>
+              </div>
+            ))}
+          </TimeBlock>
+        </div>
+      )}
+
 
       {/* ── attention, one line rather than its own panel ── */}
       {(data.droppedCount > 0 || data.overdueCount > 0 || data.routines.total > 0) && (
