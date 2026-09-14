@@ -137,6 +137,26 @@ function DashboardView() {
    */
   const [showDone, setShowDone] = useState<Set<string>>(new Set())
   /**
+   * Board or compact.
+   *
+   * The board is a column of full-width project rows; with sixteen projects,
+   * four fit a screen and the rest is scrolling. Compact is the same projects
+   * as a grid of small cards — every one on a single screen, each carrying
+   * the three numbers that matter (open, late, next due) and opening the
+   * drill on tap. The board is for working; compact is for seeing everything.
+   */
+  const [boardMode, setBoardMode] = useState<'board' | 'compact'>('board')
+  // Read after mount: this component is server-rendered first, where there is
+  // no localStorage, and a different initial value on the client would make
+  // hydration disagree with the server's markup.
+  useEffect(() => {
+    try { if (localStorage.getItem('merc.boardMode') === 'compact') setBoardMode('compact') } catch {}
+  }, [])
+  const setMode = (m: 'board' | 'compact') => {
+    setBoardMode(m)
+    try { localStorage.setItem('merc.boardMode', m) } catch {}
+  }
+  /**
    * How rows are ordered inside a single day.
    *
    * A day is a bag of a dozen things from five classes, and which order they
@@ -386,6 +406,34 @@ function DashboardView() {
     .filter(g => lens === 'all'
       || g.loose.length > 0
       || g.departments.some(d => d.rows.length > 0))
+
+  /**
+   * What a card says about a project: everything under it at any depth, not
+   * just direct children, because a project of departments has nothing
+   * directly under it and would read as empty.
+   */
+  const cardStats = (projectId: string) => {
+    const nodes = data.tree ?? []
+    const under: TreeNode[] = []
+    const walk = (id: string, guard: Set<string>) => {
+      for (const n of nodes) {
+        if (n.parent_id !== id || guard.has(n.id)) continue
+        guard.add(n.id)
+        under.push(n)
+        walk(n.id, guard)
+      }
+    }
+    walk(projectId, new Set())
+    const leaves = under.filter(n => n.isGroup !== true && !under.some(c => c.parent_id === n.id))
+    const open = leaves.filter(n => n.progress !== 'done' && !n.foreign)
+    const late = open.filter(n => n.due_date && n.due_date < data.date)
+    const next = open
+      .map(n => n.planned_date && n.planned_date >= data.date ? n.planned_date : n.due_date)
+      .filter((d): d is string => !!d && d >= data.date)
+      .sort()[0] ?? null
+    const depts = under.filter(n => n.parent_id === projectId && n.isGroup === true).length
+    return { open: open.length, late: late.length, next, depts, done: leaves.length - open.length }
+  }
 
   const shownRows = groups.reduce(
     (n, g) => n + g.loose.length + g.departments.reduce((m, d) => m + d.rows.length, 0),
@@ -823,9 +871,64 @@ function DashboardView() {
           {lens === 'all' ? 'All work' : LENSES.find(l => l.value === lens)?.label}
         </span>
         <span className="text-[10px] tnum text-ink-3">{shownRows} of {tally.all}</span>
+        <span className="ml-auto flex gap-0.5 rounded-md border border-line p-0.5">
+          {(['board', 'compact'] as const).map(m => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`rounded px-2 py-px text-[10.5px] ${
+                boardMode === m ? 'bg-mine text-bg' : 'text-ink-2 hover:text-ink'
+              }`}
+            >
+              {m === 'board' ? 'Board' : 'Compact'}
+            </button>
+          ))}
+        </span>
       </div>
 
-      {groups.map(({ project, loose, departments, doneCount }, gi) => (
+      {boardMode === 'compact' && (
+        <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {groups.map(({ project }) => {
+            const st = cardStats(project.id)
+            return (
+              <button
+                key={project.id}
+                onClick={() => setDrillRoot(project.id)}
+                className="group flex flex-col rounded-xl border border-line/40 bg-surface p-2.5 text-left shadow-card
+                           hover:border-mine/50 hover:shadow-pop"
+              >
+                <div className="mb-1 flex items-start gap-1.5">
+                  <span className="mt-[3px] h-3 w-[3px] shrink-0 rounded-full"
+                        style={{ background: project.color ?? 'var(--band-edge)' }} />
+                  <span className="min-w-0 break-words text-[12px] font-semibold leading-tight">
+                    {project.title}
+                  </span>
+                </div>
+                <div className="mt-auto flex items-baseline gap-1.5">
+                  <span className={`text-[22px] font-semibold leading-none tnum ${
+                    st.open === 0 ? 'text-ink-3' : 'text-ink'
+                  }`}>
+                    {st.open}
+                  </span>
+                  <span className="text-[10px] text-ink-3">open</span>
+                  {st.late > 0 && (
+                    <span className="ml-auto rounded-full bg-dropped-soft px-1.5 text-[10px] font-medium tnum text-dropped">
+                      {st.late} late
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 flex flex-wrap gap-x-2 text-[10px] text-ink-3">
+                  {st.next && <span>next {mediumLabel(st.next)}</span>}
+                  {st.depts > 0 && <span>{st.depts} sub</span>}
+                  {st.done > 0 && <span>{st.done} done</span>}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {boardMode === 'board' && groups.map(({ project, loose, departments, doneCount }, gi) => (
         <section
           key={project.id}
           ref={el => { groupRefs.current[project.id] = el }}
