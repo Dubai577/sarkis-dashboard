@@ -136,7 +136,15 @@ function DashboardView() {
    * are in changes what the list is for: by deadline it is triage, by class it
    * is a work session, by name it is a lookup.
    */
-  const [daySort, setDaySort] = useState<'due' | 'class' | 'name'>('due')
+  const [daySort, setDaySort] = useState<'due' | 'class' | 'name' | 'priority'>('due')
+  /** Flip the chosen order: latest first, lowest priority first, Z to A. */
+  const [dayDesc, setDayDesc] = useState(false)
+  /**
+   * Show only one area of your life on the day: the top-level project a row
+   * ultimately sits under — VT, Convent, OCCM Exec. Chips are built from what
+   * is actually on the day, so an area with nothing today is not offered.
+   */
+  const [dayArea, setDayArea] = useState<string | null>(null)
   /**
    * Ticked in the last couple of seconds, and therefore still in place.
    *
@@ -445,8 +453,28 @@ function DashboardView() {
     data.date > data.weekStart ? nextDay(data.date) : data.weekStart, weekEnd,
   ) as { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[])
 
+  /**
+   * Next week, in full.
+   *
+   * On a Thursday "this week" is two days, and the thing that decides what
+   * you do with them is what Monday holds. The block splits: the rest of this
+   * week above, all of next below, each day its own group.
+   */
+  const nextWeekStart = nextDay(weekEnd)
+  const nextWeekEnd = (() => {
+    const d = new Date(`${nextWeekStart}T12:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + 6)
+    return d.toISOString().slice(0, 10)
+  })()
+  const nextWeekTodos = data.weekTodos
+    .filter(t => !t.is_complete && t.task_date >= nextWeekStart && t.task_date <= nextWeekEnd)
+    .sort((a, b) => a.task_date.localeCompare(b.task_date))
+  const itemsNextWeek = datedOn(nextWeekStart, nextWeekEnd) as {
+    node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup'
+  }[]
+
   const laterThisWeek = data.weekTodos
-    .filter(t => !t.is_complete && t.task_date > data.date)
+    .filter(t => !t.is_complete && t.task_date > data.date && t.task_date <= weekEnd)
     .sort((a, b) => a.task_date.localeCompare(b.task_date))
 
   /**
@@ -475,6 +503,21 @@ function DashboardView() {
     due: string
     cls: string
     name: string
+    /** The top-level project it lives under; '' for a plain dated task. */
+    root: string
+    /** Urgent 0, Soon 1, Whenever 2, unset 3 — so a plain sort puts urgent first. */
+    pri: number
+  }
+
+  const PRI: Record<string, number> = { Urgent: 0, Soon: 1, Whenever: 2 }
+  const rootOf = (n: TreeNode | undefined, nodes: TreeNode[]): string => {
+    let cur = n
+    const guard = new Set<string>()
+    while (cur?.parent_id && !guard.has(cur.id)) {
+      guard.add(cur.id)
+      cur = nodes.find(x => x.id === cur!.parent_id)
+    }
+    return cur?.title ?? ''
   }
 
   const toRows = (todos: Todo[], items: typeof itemsToday): DayRow[] => {
@@ -486,7 +529,9 @@ function DashboardView() {
         key: `t-${t.id}`, todo: t, done: settled(t),
         // A blank deadline sorts last, never first: no date is not "urgent".
         due: src?.due_date ?? '9999-12-31',
-        cls: parent?.title ?? '￿', name: t.title,
+        cls: parent?.title ?? '\uffff', name: t.title,
+        root: rootOf(src, nodes),
+        pri: PRI[src?.priority ?? ''] ?? 3,
       }
     })
     for (const it of items) {
@@ -494,12 +539,19 @@ function DashboardView() {
       rows.push({
         key: `i-${it.node.id}`, item: it, done: it.node.progress === 'done',
         due: it.node.due_date ?? '9999-12-31',
-        cls: parent?.title ?? '￿', name: it.node.title,
+        cls: parent?.title ?? '\uffff', name: it.node.title,
+        root: rootOf(it.node, nodes),
+        pri: PRI[it.node.priority ?? ''] ?? 3,
       })
     }
-    const by = daySort === 'due' ? 'due' : daySort === 'class' ? 'cls' : 'name'
+    const shown = dayArea ? rows.filter(r => r.root === dayArea) : rows
+    const cmp = (a: DayRow, b: DayRow): number => {
+      if (daySort === 'priority') return a.pri - b.pri
+      const by = daySort === 'due' ? 'due' : daySort === 'class' ? 'cls' : 'name'
+      return a[by].localeCompare(b[by])
+    }
     /**
-     * Finished work sinks, whatever the chosen order.
+     * Finished work sinks, whatever the chosen order and direction.
      *
      * This sorted by the chosen key alone, which threw away the completed-last
      * ordering the caller had already applied — so ticked rows stayed scattered
@@ -507,32 +559,45 @@ function DashboardView() {
      * Done-ness outranks every other key: a finished thing is not competing for
      * attention with an unfinished one, whatever their deadlines say.
      */
-    return rows.sort((a, b) =>
+    return shown.sort((a, b) =>
       Number(a.done) - Number(b.done)
-      || a[by].localeCompare(b[by])
+      || (dayDesc ? -1 : 1) * cmp(a, b)
       || a.name.localeCompare(b.name))
   }
 
-  const weekByDay = (() => {
+  const byDay = (todos: Todo[], items: typeof itemsThisWeek) => {
     const buckets = new Map<string, { todos: Todo[]; items: typeof itemsThisWeek }>()
     const bucket = (d: string) => {
       const b = buckets.get(d) ?? { todos: [], items: [] }
       buckets.set(d, b)
       return b
     }
-    for (const t of laterThisWeek) bucket(t.task_date).todos.push(t)
-    for (const i of itemsThisWeek) bucket(i.when).items.push(i)
+    for (const t of todos) bucket(t.task_date).todos.push(t)
+    for (const i of items) bucket(i.when).items.push(i)
     return [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }
+  const areasOnShow = (() => {
+    const nodes = data.tree ?? []
+    const roots = new Set<string>()
+    const add = (n: TreeNode | undefined) => { const r = rootOf(n, nodes); if (r) roots.add(r) }
+    for (const t of [...data.todos, ...laterThisWeek, ...nextWeekTodos]) {
+      add(t.source_item_id ? nodes.find(n => n.id === t.source_item_id) : undefined)
+    }
+    for (const i of [...itemsToday, ...itemsThisWeek, ...itemsNextWeek]) add(i.node)
+    return [...roots].sort()
   })()
+
+  const weekByDay = byDay(laterThisWeek, itemsThisWeek)
+  const nextWeekByDay = byDay(nextWeekTodos, itemsNextWeek)
 
   return (
     <div className="mx-auto max-w-4xl px-3 pb-8 pt-3">
       {error && <div className="mb-2"><ErrorBanner message={error} onRetry={load} /></div>}
 
       {/* ── time: the two questions with an answer today ── */}
-      <div className="mb-1 flex items-center gap-1.5">
-        <span className="text-[10px] uppercase tracking-wider text-ink-3">Order each day by</span>
-        {([['due', 'Deadline'], ['class', 'Class'], ['name', 'Name']] as const).map(([v, label]) => (
+      <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+        <span className="text-[10px] uppercase tracking-wider text-ink-3">Order by</span>
+        {([['due', 'Deadline'], ['priority', 'Priority'], ['class', 'Class'], ['name', 'Name']] as const).map(([v, label]) => (
           <button
             key={v}
             onClick={() => setDaySort(v)}
@@ -543,6 +608,40 @@ function DashboardView() {
             {label}
           </button>
         ))}
+        <button
+          onClick={() => setDayDesc(d => !d)}
+          title={dayDesc ? 'Latest / lowest first — click for the usual order' : 'Click for latest / lowest first'}
+          className={`rounded-full border px-2 py-px text-[10.5px] ${
+            dayDesc ? 'border-mine bg-mine-soft text-mine' : 'border-line text-ink-2'
+          }`}
+        >
+          {dayDesc ? '\u2193 reversed' : '\u2191'}
+        </button>
+
+        {areasOnShow.length > 1 && (
+          <>
+            <span className="ml-2 text-[10px] uppercase tracking-wider text-ink-3">Show</span>
+            <button
+              onClick={() => setDayArea(null)}
+              className={`rounded-full border px-2 py-px text-[10.5px] ${
+                dayArea === null ? 'border-mine bg-mine-soft text-mine' : 'border-line text-ink-2'
+              }`}
+            >
+              All
+            </button>
+            {areasOnShow.map(a => (
+              <button
+                key={a}
+                onClick={() => setDayArea(dayArea === a ? null : a)}
+                className={`rounded-full border px-2 py-px text-[10.5px] ${
+                  dayArea === a ? 'border-mine bg-mine-soft text-mine' : 'border-line text-ink-2'
+                }`}
+              >
+                {a}
+              </button>
+            ))}
+          </>
+        )}
       </div>
 
       <div className="mb-3 grid gap-3 sm:grid-cols-2">
@@ -574,37 +673,35 @@ function DashboardView() {
           count={laterThisWeek.length + itemsThisWeek.length}
           href="/calendar?view=week"
         >
-          {weekByDay.length === 0 ? (
-            <p className="py-1 text-[12px] text-ink-3">Nothing else dated this week.</p>
-          ) : (
-            weekByDay.map(([date, { todos, items }]) => (
-              <section key={date} className="mb-2 last:mb-0">
-                {/* A day needs to announce itself. A hairline rule and 10px
-                    grey read as another row, which is why a wall of thirteen
-                    assignments looked like one undifferentiated list. */}
-                <div className="sticky top-0 z-10 -mx-2 mb-0.5 flex items-baseline gap-2
-                                border-y border-line bg-surface-2 px-2 py-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-ink">
-                    {DAY_NAMES[dayIndex(date)]}
-                  </span>
-                  <span className="text-[10.5px] tnum text-ink-2">{mediumLabel(date)}</span>
-                  <span className="ml-auto rounded-full bg-surface-3 px-1.5 text-[10px] tnum text-ink-2">
-                    {todos.length + items.length}
-                  </span>
-                </div>
-                <AddToDay date={date} onAdd={addTodo} />
-                {toRows(todos, items).map(r =>
-                  r.todo ? (
-                    <TodoLine key={r.key} todo={r.todo} onToggle={() => toggleTodo(r.todo!)}
-                              tree={data.tree ?? []} today={data.date} onEdit={setActionTarget} />
-                  ) : (
-                    <DatedItem key={r.key} node={r.item!.node} kind={r.item!.kind}
-                               tree={data.tree ?? []} onOpen={t => setActionTarget(t)} />
-                  ),
-                )}
-              </section>
-            ))
-          )}
+          {/* The rest of this week, then all of next, split horizontally. */}
+          <WeekHalf
+            days={weekByDay}
+            empty="Nothing else dated this week."
+            addTodo={addTodo}
+            toRows={toRows}
+            tree={data.tree ?? []}
+            today={data.date}
+            onToggle={toggleTodo}
+            onEdit={setActionTarget}
+          />
+
+          <div className="mt-2 flex items-baseline gap-2 border-t-2 border-line pt-1.5">
+            <h3 className="text-[11px] font-medium uppercase tracking-wider text-ink-2">Next week</h3>
+            <span className="text-[10px] tnum text-ink-3">
+              {nextWeekTodos.length + itemsNextWeek.length}
+            </span>
+            <span className="text-[10px] text-ink-3">from {mediumLabel(nextWeekStart)}</span>
+          </div>
+          <WeekHalf
+            days={nextWeekByDay}
+            empty="Nothing dated next week yet."
+            addTodo={addTodo}
+            toRows={toRows}
+            tree={data.tree ?? []}
+            today={data.date}
+            onToggle={toggleTodo}
+            onEdit={setActionTarget}
+          />
         </TimeBlock>
       </div>
 
@@ -826,7 +923,7 @@ function DashboardView() {
                     planned_date: node.planned_date, due_date: node.due_date,
                     status: node.status,
                   })}
-                  className="clamp-1 min-w-0 text-left text-[11.5px] font-semibold leading-tight"
+                  className="min-w-0 break-words text-left text-[11.5px] font-semibold leading-tight"
                 >
                   {node.title}
                 </button>
@@ -927,6 +1024,61 @@ function DashboardView() {
   )
 }
 
+/**
+ * One half of the week block: a run of days, each its own group.
+ *
+ * Extracted so this week and next week render identically — the same day
+ * header, the same add field, the same sort — rather than one being a copy of
+ * the other that drifts.
+ */
+function WeekHalf({
+  days, empty, addTodo, toRows, tree, today, onToggle, onEdit,
+}: {
+  days: [string, { todos: Todo[]; items: { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[] }][]
+  empty: string
+  addTodo: (date: string, title: string) => void
+  toRows: (todos: Todo[], items: { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[]) => {
+    key: string; todo?: Todo; item?: { node: TreeNode; kind: 'planned' | 'due' | 'followup' }
+  }[]
+  tree: TreeNode[]
+  today: string
+  onToggle: (t: Todo) => void
+  onEdit: (t: ActionTarget) => void
+}) {
+  if (days.length === 0) return <p className="py-1 text-[12px] text-ink-3">{empty}</p>
+  return (
+    <>
+      {days.map(([date, { todos, items }]) => (
+        <section key={date} className="mb-2 last:mb-0">
+          {/* A day needs to announce itself. A hairline rule and 10px grey
+              read as another row, which is why a wall of thirteen
+              assignments looked like one undifferentiated list. */}
+          <div className="sticky top-0 z-10 -mx-2 mb-0.5 flex items-baseline gap-2
+                          border-y border-line bg-surface-2 px-2 py-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink">
+              {DAY_NAMES[dayIndex(date)]}
+            </span>
+            <span className="text-[10.5px] tnum text-ink-2">{mediumLabel(date)}</span>
+            <span className="ml-auto rounded-full bg-surface-3 px-1.5 text-[10px] tnum text-ink-2">
+              {todos.length + items.length}
+            </span>
+          </div>
+          <AddToDay date={date} onAdd={addTodo} />
+          {toRows(todos, items).map(r =>
+            r.todo ? (
+              <TodoLine key={r.key} todo={r.todo} onToggle={() => onToggle(r.todo!)}
+                        tree={tree} today={today} onEdit={onEdit} />
+            ) : (
+              <DatedItem key={r.key} node={r.item!.node} kind={r.item!.kind}
+                         tree={tree} onOpen={onEdit} />
+            ),
+          )}
+        </section>
+      ))}
+    </>
+  )
+}
+
 function TimeBlock({
   title, when, count, href, children,
 }: {
@@ -985,8 +1137,8 @@ function DatedItem({
     : node.title
 
   return (
-    <div className="flex items-center gap-1.5 border-b border-line/60 py-1 last:border-b-0">
-      <span className={`shrink-0 rounded-sm px-1 text-[8.5px] uppercase tracking-wider ${
+    <div className="flex items-start gap-1.5 border-b border-line/60 py-1 last:border-b-0">
+      <span className={`mt-[3px] shrink-0 rounded-sm px-1 text-[8.5px] uppercase tracking-wider ${
         kind === 'due' ? 'bg-dropped-soft text-dropped'
           : kind === 'followup'
             ? (node.followUp?.overdue ? 'bg-dropped-soft text-dropped' : 'bg-theirs-soft text-theirs')
@@ -1000,13 +1152,12 @@ function DatedItem({
           planned_date: node.planned_date, due_date: node.due_date,
           status: node.status, progress: node.progress ?? null,
         })}
-        className="min-w-0 flex-1 truncate text-left text-[12.5px]"
-        title={label}
+        className="min-w-0 flex-1 break-words text-left text-[12.5px] leading-snug"
       >
         {label}
       </button>
       {where && (
-        <span className="max-w-[40%] shrink truncate text-[10px] text-ink-3" title={where}>{where}</span>
+        <span className="mt-[3px] max-w-[40%] shrink text-right text-[10px] leading-tight text-ink-3">{where}</span>
       )}
     </div>
   )
@@ -1078,11 +1229,11 @@ function TodoLine({
     : null
 
   return (
-    <div className="flex items-center gap-1.5 border-b border-line/60 py-1 last:border-b-0">
+    <div className="flex items-start gap-1.5 border-b border-line/60 py-1 last:border-b-0">
       <Check checked={todo.is_complete} onChange={onToggle} label={`Complete ${todo.title}`} />
-      <span className={`min-w-0 flex-1 truncate text-[12.5px] ${
+      <span className={`min-w-0 flex-1 break-words text-[12.5px] leading-snug ${
         todo.is_complete ? 'text-ink-3 line-through' : ''
-      }`} title={todo.title}>
+      }`}>
         {todo.title}
       </span>
 
@@ -1123,7 +1274,7 @@ function TodoLine({
       )}
 
       {parent && (
-        <span className="max-w-[40%] shrink truncate text-[10px] text-ink-3" title={parent.title}>
+        <span className="mt-[3px] max-w-[40%] shrink text-right text-[10px] leading-tight text-ink-3">
           {parent.title}
         </span>
       )}
@@ -1164,7 +1315,7 @@ function Chip({
   }
   const done = child.progress === 'done'
   return (
-    <span className="group inline-flex max-w-full items-center gap-1 rounded-full border border-line/40 bg-surface py-[3px] pl-2 pr-1 leading-none shadow-card hover:border-line">
+    <span className="group inline-flex max-w-full items-start gap-1 rounded-lg border border-line/40 bg-surface py-[3px] pl-2 pr-1 shadow-card hover:border-line">
       {/*
         The title used to be a link to the item's own page, which is the one
         thing this dashboard exists to avoid: you came here to see everything
@@ -1172,9 +1323,15 @@ function Chip({
         editor in place instead. The pencil is the same action, said out loud,
         because a title that happens to be clickable is not an affordance.
       */}
+      {/*
+        Wraps. Clamping to one line with an ellipsis made a long title into a
+        guessing game — "Chapter 1: History of Helmets from Meso…" tells you
+        nothing you can act on. The chip grows to fit; the controls beside it
+        stay on the first line.
+      */}
       <button
         onClick={() => onAction(target)}
-        className={`clamp-1 min-w-0 text-left text-[12px] leading-tight ${
+        className={`min-w-0 break-words text-left text-[12px] leading-snug ${
           done ? 'text-ink-3 line-through' : ''
         }`}
       >
@@ -1189,7 +1346,7 @@ function Chip({
 
       {child.waiting && (
         <button onClick={onWait}
-                className={`shrink-0 text-[9.5px] tnum ${
+                className={`mt-[3px] shrink-0 text-[9.5px] tnum ${
                   child.possession === 'dropped' ? 'text-dropped' : 'text-ink-3'
                 }`}>
           {child.waiting.split(' ')[0]}{child.days !== null ? ` ${child.days}d` : ''}

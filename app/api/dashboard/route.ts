@@ -35,8 +35,11 @@ export async function GET() {
       assignRes, contribRes, projRes, items,
     ] = await Promise.all([
       db.from('todos').select('*').eq('task_date', now).order('sort_order'),
+      // Two weeks, not one: the page shows the rest of this week and all of
+      // next, and one query is cheaper than a second round trip for the same
+      // table.
       db.from('todos').select('*')
-        .gte('task_date', start).lte('task_date', addDays(start, 6))
+        .gte('task_date', start).lte('task_date', addDays(start, 13))
         .order('task_date').order('sort_order'),
       db.from('notes').select('id,content,created_at').order('created_at', { ascending: false }).limit(6),
       db.from('routines').select('id,name,cadence,weekday,anchor_date,sort_order,is_active').eq('is_active', true),
