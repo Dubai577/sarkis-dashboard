@@ -21,7 +21,7 @@
  * Relative import so scripts/exec-portal-sync.mjs can run this under plain
  * Node, same as the Canvas script.
  */
-import { today as todayIso } from '../dates.ts'
+import { today as todayIso, addDays } from '../dates.ts'
 
 export interface ExecPortalConfig {
   feedUrl: string
@@ -107,6 +107,48 @@ type Db = any
  * your week, or in the 8pm email. One definition, used everywhere that
  * decides what is yours: an exec-portal task whose parent group is not yours.
  */
+/**
+ * What a teammate's deadline means to you: a follow-up, the day before.
+ *
+ * You are the VP. "Organize Bible Study days, due Friday, assigned to Freddy"
+ * is not your task, but "check in with Freddy on Thursday" is. So a foreign
+ * task with a due date becomes a follow-up dated the day before it is owed.
+ * Once that day has passed and the task is still open on the portal, the
+ * follow-up sits on today and keeps sitting there — a nag is the point.
+ *
+ * Done on the portal means gone from here; the sync carries status across.
+ */
+export interface FollowUp {
+  person: string
+  /** The day the follow-up shows: due - 1, or today if that has passed. */
+  date: string
+  /** True when the task itself is already past due. */
+  overdue: boolean
+  title: string
+}
+
+export function followUpFor(
+  row: {
+    title: string; due_date?: string | null; progress?: string | null
+    external_source?: string | null; parent_id?: string | null
+  },
+  byId: Map<string, { title: string; external_uid?: string | null }>,
+  today: string,
+): FollowUp | null {
+  if (!isForeign(row, byId)) return null
+  if (!row.due_date || row.progress === 'done') return null
+  const parent = row.parent_id ? byId.get(row.parent_id) : undefined
+  const person = (parent?.title ?? 'them').replace(/\s*\(me\)$/, '')
+  const dayBefore = addDays(row.due_date, -1)
+  const date = dayBefore < today ? today : dayBefore
+  return {
+    person,
+    date,
+    overdue: row.due_date < today,
+    title: `Follow up with ${person} about ${row.title}`,
+  }
+}
+
 export function isForeign(
   row: { external_source?: string | null; parent_id?: string | null },
   byId: Map<string, { external_uid?: string | null }>,

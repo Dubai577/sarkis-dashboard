@@ -69,7 +69,7 @@ interface ExecUpdate {
 interface Payload {
   date: string
   weekStart: string
-  execPortal?: { updates: ExecUpdate[]; available: boolean }
+  execPortal?: { updates: ExecUpdate[]; available: boolean; syncedAt: string | null }
   todos: Todo[]
   weekTodos: Todo[]
   overdueCount: number
@@ -183,6 +183,29 @@ function DashboardView() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  /**
+   * Pull the portal when you open the dashboard and the last pull is old.
+   *
+   * The hourly cron bounds staleness at an hour; this bounds it at "when you
+   * looked". It runs after the page has rendered so a slow portal never
+   * delays the dashboard, and it re-loads only if something actually changed.
+   * Once per page open, never in a loop.
+   */
+  const refreshedExec = useRef(false)
+  useEffect(() => {
+    if (!data || refreshedExec.current) return
+    const at = data.execPortal?.syncedAt
+    const ageMin = at ? (Date.now() - Date.parse(at)) / 60000 : Infinity
+    if (ageMin < 15) return
+    refreshedExec.current = true
+    fetch('/api/exec-portal/sync', { method: 'POST' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(rep => {
+        if (rep && (rep.created || rep.updated || rep.archived || rep.updatesStored)) load()
+      })
+      .catch(() => {})
+  }, [data, load])
   useEffect(() => {
     const onCapture = () => load()
     window.addEventListener('merc:captured', onCapture)
@@ -385,9 +408,17 @@ function DashboardView() {
     .filter(n => n.parent_id && n.isGroup !== true)
     .filter(n => n.progress !== 'done')
     .filter(n => !mirrored.has(n.id))
-    // A teammate's deadline is not yours. It stays on the board under them.
-    .filter(n => !n.foreign)
     .map(n => {
+      /**
+       * A teammate's deadline is not yours — but checking in on it is. A
+       * foreign task reaches your day only as its follow-up, the day before
+       * it is owed, and stays on today once that has passed.
+       */
+      if (n.foreign) {
+        const f = n.followUp
+        if (!f || f.date < from || f.date > to) return null
+        return { node: n, when: f.date, kind: 'followup' as const }
+      }
       const planned = n.planned_date && n.planned_date >= from && n.planned_date <= to
       const due = n.due_date && n.due_date >= from && n.due_date <= to
       if (!planned && !due) return null
@@ -396,7 +427,7 @@ function DashboardView() {
     .filter(Boolean)
     .sort((a, b) => a!.when.localeCompare(b!.when) || a!.node.title.localeCompare(b!.node.title))
 
-  const itemsToday = datedOn(data.date, data.date) as { node: TreeNode; when: string; kind: 'planned' | 'due' }[]
+  const itemsToday = datedOn(data.date, data.date) as { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[]
   const weekEnd = (() => {
     const d = new Date(`${data.weekStart}T12:00:00Z`)
     d.setUTCDate(d.getUTCDate() + 6)
@@ -404,7 +435,7 @@ function DashboardView() {
   })()
   const itemsThisWeek = (datedOn(
     data.date > data.weekStart ? nextDay(data.date) : data.weekStart, weekEnd,
-  ) as { node: TreeNode; when: string; kind: 'planned' | 'due' }[])
+  ) as { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[])
 
   const laterThisWeek = data.weekTodos
     .filter(t => !t.is_complete && t.task_date > data.date)
@@ -430,7 +461,7 @@ function DashboardView() {
   type DayRow = {
     key: string
     todo?: Todo
-    item?: { node: TreeNode; kind: 'planned' | 'due' }
+    item?: { node: TreeNode; kind: 'planned' | 'due' | 'followup' }
     /** Finished and past its two-second hold, so it belongs at the bottom. */
     done: boolean
     due: string
@@ -921,7 +952,7 @@ function DatedItem({
   node, kind, tree, onOpen,
 }: {
   node: TreeNode
-  kind: 'planned' | 'due'
+  kind: 'planned' | 'due' | 'followup'
   tree: TreeNode[]
   onOpen: (t: ActionTarget) => void
 }) {
@@ -938,13 +969,20 @@ function DatedItem({
   }
   // Deepest ancestor only: "MSE 2034 - Elem of Mat Eng", not the full chain.
   const where = parts[parts.length - 1] ?? ''
+  // A follow-up reads as what you do, not what they owe.
+  const label = kind === 'followup' && node.followUp
+    ? node.followUp.title
+    : node.title
 
   return (
     <div className="flex items-center gap-1.5 border-b border-line/60 py-1 last:border-b-0">
       <span className={`shrink-0 rounded-sm px-1 text-[8.5px] uppercase tracking-wider ${
-        kind === 'due' ? 'bg-dropped-soft text-dropped' : 'bg-mine-soft text-mine'
+        kind === 'due' ? 'bg-dropped-soft text-dropped'
+          : kind === 'followup'
+            ? (node.followUp?.overdue ? 'bg-dropped-soft text-dropped' : 'bg-theirs-soft text-theirs')
+            : 'bg-mine-soft text-mine'
       }`}>
-        {kind}
+        {kind === 'followup' ? (node.followUp?.overdue ? 'overdue · theirs' : 'follow up') : kind}
       </span>
       <button
         onClick={() => onOpen({
@@ -953,9 +991,9 @@ function DatedItem({
           status: node.status, progress: node.progress ?? null,
         })}
         className="min-w-0 flex-1 truncate text-left text-[12.5px]"
-        title={node.title}
+        title={label}
       >
-        {node.title}
+        {label}
       </button>
       {where && (
         <span className="max-w-[40%] shrink truncate text-[10px] text-ink-3" title={where}>{where}</span>

@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { denyUnlessAdmin } from '@/lib/auth/guard'
 import { serverError } from '@/lib/api/http'
 import { addDays, dateForDay, today as todayIso, weekStart } from '@/lib/dates'
-import { isForeign } from '@/lib/sync/exec-portal'
+import { isForeign, followUpFor } from '@/lib/sync/exec-portal'
 import { loadItemViews, boardItems } from '@/lib/db/items'
 import { runRollover } from '@/lib/db/rollover'
 import { runSync } from '@/lib/db/sync'
@@ -216,9 +216,16 @@ export async function GET() {
       .select('id,task_id,task_title,author_name,note,created_at')
       .order('created_at', { ascending: false })
       .limit(8)
+    // When the portal was last pulled, so the page can decide it is stale.
+    const lastExecSync = items
+      .filter(i => i.external_source === 'exec-portal' && i.external_synced_at)
+      .map(i => i.external_synced_at as string)
+      .sort()
+      .pop() ?? null
     const execPortal = {
       updates: execRes.error ? [] : (execRes.data ?? []),
       available: !execRes.error,
+      syncedAt: lastExecSync,
     }
 
     const itemsById = new Map(items.map(x => [x.id, x]))
@@ -259,6 +266,8 @@ export async function GET() {
         progress: i.progress ?? null,
         // A teammate's exec-portal task: on the board, not on your day.
         foreign: isForeign(i, itemsById),
+        // ...but it reaches your day as a follow-up, the day before it is due.
+        followUp: followUpFor(i, itemsById, now),
       })),
       projects,
       school,

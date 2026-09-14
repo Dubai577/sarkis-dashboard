@@ -4,7 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { denyUnlessCron } from '@/lib/auth/guard'
 import { serverError } from '@/lib/api/http'
 import { today as todayIso } from '@/lib/dates'
-import { isForeign } from '@/lib/sync/exec-portal'
+import { isForeign, followUpFor } from '@/lib/sync/exec-portal'
+import { addDays } from '@/lib/dates'
 
 /**
  * The evening check: what is due tonight and still not done.
@@ -50,7 +51,18 @@ export async function GET(req: NextRequest) {
       .filter(i => !isForeign(i, byId))
       .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
 
-    if (urgent.length === 0) {
+    /**
+     * Teammates' tasks due tomorrow, and any already overdue and still open on
+     * the portal. Not "urgent" in the sense above — not yours to do — but the
+     * evening is when you decide who to message in the morning.
+     */
+    const tomorrow = addDays(now, 1)
+    const followUps = (all ?? [])
+      .map(i => followUpFor(i, byId, now))
+      .filter((f): f is NonNullable<typeof f> => !!f && f.date <= tomorrow)
+      .sort((a, b) => Number(b.overdue) - Number(a.overdue) || a.person.localeCompare(b.person))
+
+    if (urgent.length === 0 && followUps.length === 0) {
       return NextResponse.json({ ok: true, sent: false, reason: 'nothing outstanding', checked: all?.length ?? 0 })
     }
 
@@ -69,12 +81,29 @@ export async function GET(req: NextRequest) {
       </tr>`
     }
 
+    const followLine = (f: typeof followUps[number]) => `<tr>
+      <td style="padding:6px 0;border-bottom:1px solid #E7E0D8;font:14px system-ui">
+        ${escapeHtml(f.title)}
+      </td>
+      <td style="padding:6px 0;border-bottom:1px solid #E7E0D8;text-align:right;white-space:nowrap;
+                 font:12px system-ui;color:${f.overdue ? '#A3322F' : '#3F6386'}">
+        ${f.overdue ? 'they are overdue' : 'due tomorrow'}
+      </td>
+    </tr>`
+
     const html = `<div style="max-width:520px;margin:0 auto">
+      ${urgent.length > 0 ? `
       <h1 style="font:600 18px system-ui;color:#2A2320;margin:0 0 4px">Due tonight</h1>
       <p style="font:13px system-ui;color:#8B7C70;margin:0 0 12px">
         ${urgent.length} not marked done.
       </p>
-      <table style="width:100%;border-collapse:collapse">${urgent.map(line).join('')}</table>
+      <table style="width:100%;border-collapse:collapse">${urgent.map(line).join('')}</table>` : ''}
+      ${followUps.length > 0 ? `
+      <h2 style="font:600 15px system-ui;color:#2A2320;margin:${urgent.length ? 20 : 0}px 0 4px">Follow up</h2>
+      <p style="font:13px system-ui;color:#8B7C70;margin:0 0 8px">
+        Exec team tasks due tomorrow or already late.
+      </p>
+      <table style="width:100%;border-collapse:collapse">${followUps.map(followLine).join('')}</table>` : ''}
       <p style="margin:16px 0 0">
         <a href="${APP_URL}" style="font:13px system-ui;color:#8A6118">Open the dashboard</a>
       </p>
@@ -84,11 +113,13 @@ export async function GET(req: NextRequest) {
     await resend.emails.send({
       from: FROM,
       to,
-      subject: `${urgent.length} due tonight`,
+      subject: urgent.length > 0
+        ? `${urgent.length} due tonight${followUps.length ? ` · ${followUps.length} to follow up` : ''}`
+        : `${followUps.length} to follow up tomorrow`,
       html,
     })
 
-    return NextResponse.json({ ok: true, sent: true, count: urgent.length, to })
+    return NextResponse.json({ ok: true, sent: true, count: urgent.length, followUps: followUps.length, to })
   } catch (err) {
     return serverError('cron.urgent.GET', err)
   }

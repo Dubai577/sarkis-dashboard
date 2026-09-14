@@ -45,6 +45,8 @@ export interface TreeNode {
   progress?: 'in_progress' | 'done' | null
   /** An exec-portal task assigned to someone else: on the board, not on your day. */
   foreign?: boolean
+  /** ...except as a follow-up, the day before it is due. */
+  followUp?: { person: string; date: string; overdue: boolean; title: string } | null
 }
 
 const PRIORITY_RANK: Record<string, number> = { Urgent: 0, Soon: 1, Whenever: 2, 'N/A': 3 }
