@@ -89,6 +89,15 @@ export interface Item {
    * done means finished and still worth seeing; archived means put away.
    */
   progress?: 'in_progress' | 'done' | null
+  /**
+   * Where a row came from, when it did not come from you: 'canvas',
+   * 'exec-portal'. external_uid is the source's own id for it, unique per
+   * source (migration 016), which is what makes a re-sync an upsert.
+   * Optional because the columns were added by hand-run migration.
+   */
+  external_source?: string | null
+  external_uid?: string | null
+  external_synced_at?: string | null
 
   waiting_on: Uuid | null
   waiting_since: IsoDate | null

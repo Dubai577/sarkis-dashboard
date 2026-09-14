@@ -43,6 +43,8 @@ export interface TreeNode {
    */
   isGroup?: boolean
   progress?: 'in_progress' | 'done' | null
+  /** An exec-portal task assigned to someone else: on the board, not on your day. */
+  foreign?: boolean
 }
 
 const PRIORITY_RANK: Record<string, number> = { Urgent: 0, Soon: 1, Whenever: 2, 'N/A': 3 }

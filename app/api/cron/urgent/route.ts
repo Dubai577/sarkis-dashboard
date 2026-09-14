@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { denyUnlessCron } from '@/lib/auth/guard'
 import { serverError } from '@/lib/api/http'
 import { today as todayIso } from '@/lib/dates'
+import { isForeign } from '@/lib/sync/exec-portal'
 
 /**
  * The evening check: what is due tonight and still not done.
@@ -38,13 +39,15 @@ export async function GET(req: NextRequest) {
      */
     const { data: all, error } = await db
       .from('items')
-      .select('id,title,due_date,progress,parent_id')
+      .select('id,title,due_date,progress,parent_id,external_source,external_uid')
       .is('archived_at', null)
     if (error) throw error
 
     const byId = new Map((all ?? []).map(r => [r.id, r]))
     const urgent = (all ?? [])
       .filter(i => i.due_date && i.due_date <= now && i.progress !== 'done')
+      // A teammate's exec-portal deadline is theirs to be emailed about.
+      .filter(i => !isForeign(i, byId))
       .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
 
     if (urgent.length === 0) {

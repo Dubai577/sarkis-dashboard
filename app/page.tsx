@@ -277,6 +277,8 @@ function DashboardView() {
     for (const n of nodes) {
       // Containers are not work; counting them inflates every bucket.
       if (!n.parent_id || n.isGroup === true || holds.has(n.id)) continue
+      // Someone else's task is not in your lens counts either.
+      if (n.foreign) continue
       t.all++
       t[dateStateOf({
         id: n.id, title: n.title, possession: n.possession,
@@ -383,6 +385,8 @@ function DashboardView() {
     .filter(n => n.parent_id && n.isGroup !== true)
     .filter(n => n.progress !== 'done')
     .filter(n => !mirrored.has(n.id))
+    // A teammate's deadline is not yours. It stays on the board under them.
+    .filter(n => !n.foreign)
     .map(n => {
       const planned = n.planned_date && n.planned_date >= from && n.planned_date <= to
       const due = n.due_date && n.due_date >= from && n.due_date <= to

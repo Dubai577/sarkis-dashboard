@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { denyUnlessAdmin } from '@/lib/auth/guard'
 import { serverError } from '@/lib/api/http'
 import { addDays, dateForDay, today as todayIso, weekStart } from '@/lib/dates'
+import { isForeign } from '@/lib/sync/exec-portal'
 import { loadItemViews, boardItems } from '@/lib/db/items'
 import { runRollover } from '@/lib/db/rollover'
 import { runSync } from '@/lib/db/sync'
@@ -220,6 +221,8 @@ export async function GET() {
       available: !execRes.error,
     }
 
+    const itemsById = new Map(items.map(x => [x.id, x]))
+
     return NextResponse.json({
       date: now,
       weekStart: start,
@@ -254,6 +257,8 @@ export async function GET() {
         // and behave as a department, otherwise it is a task you cannot open.
         isGroup: i.is_group_view,
         progress: i.progress ?? null,
+        // A teammate's exec-portal task: on the board, not on your day.
+        foreign: isForeign(i, itemsById),
       })),
       projects,
       school,
