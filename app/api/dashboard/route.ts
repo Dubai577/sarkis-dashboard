@@ -54,7 +54,12 @@ export async function GET() {
     ])
 
     const [overdueRes, { data: catRows }, { data: peopleRows }] = await Promise.all([
-      db.from('todos').select('id').lt('week_start', start).eq('is_complete', false),
+      // The rows, not a count: they are listed on Today now. Rollover stops at
+      // Sunday, so a task that survives the week is not carried forward — it
+      // is late, and late belongs at the top of today rather than behind a
+      // badge on a different page.
+      db.from('todos').select('*').lt('week_start', start).eq('is_complete', false)
+        .order('task_date'),
       db.from('categories').select('id,name,color').order('sort_order'),
       db.from('people').select('id,name').order('name'),
     ])
@@ -241,6 +246,7 @@ export async function GET() {
       execPortal,
       todos: todayRes.data ?? [],
       overdueCount: overdueRes.data?.length ?? 0,
+      overdueTodos: overdueRes.data ?? [],
       droppedCount: items.filter(i => i.possession === 'dropped').length,
       week,
       // The week's actual rows, so the dashboard can list them rather than

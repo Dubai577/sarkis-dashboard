@@ -77,6 +77,8 @@ interface Payload {
   todos: Todo[]
   weekTodos: Todo[]
   overdueCount: number
+  /** Unfinished todos from previous weeks. Rollover does not cross a week. */
+  overdueTodos: Todo[]
   droppedCount: number
   projects: Project[]
   people: { id: string; name: string }[]
@@ -477,7 +479,8 @@ function DashboardView() {
    * be completed; the class label moves onto it instead.
    */
   const mirrored = new Set(
-    [...data.todos, ...data.weekTodos].map(t => t.source_item_id).filter(Boolean) as string[],
+    [...data.todos, ...data.weekTodos, ...(data.overdueTodos ?? [])]
+      .map(t => t.source_item_id).filter(Boolean) as string[],
   )
 
   const datedOn = (from: string, to: string) => (data.tree ?? [])
@@ -503,7 +506,31 @@ function DashboardView() {
     .filter(Boolean)
     .sort((a, b) => a!.when.localeCompare(b!.when) || a!.node.title.localeCompare(b!.node.title))
 
-  const itemsToday = datedOn(data.date, data.date) as { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[]
+  /**
+   * Today is also where late things live.
+   *
+   * Two kinds were falling through. Todos from previous weeks: rollover walks
+   * a missed task forward a day at a time but stops at Sunday, so anything
+   * that survives the week was shown only as a count on a badge. And items
+   * whose deadline has passed with nothing planned and no mirror — an exam
+   * you missed, a task you never scheduled — were not on any day at all.
+   * Both are the most urgent things you own, and the most urgent thing you own
+   * should not be the hardest to find.
+   */
+  const overdueItems = (data.tree ?? [])
+    .filter(n => n.parent_id && n.isGroup !== true)
+    .filter(n => n.progress !== 'done' && !mirrored.has(n.id) && !n.foreign)
+    .filter(n => n.due_date && n.due_date < data.date)
+    .map(n => ({ node: n, when: n.due_date!, kind: 'due' as const }))
+    .sort((a, b) => a.when.localeCompare(b.when))
+
+  const itemsToday = [
+    ...overdueItems,
+    ...(datedOn(data.date, data.date) as { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[]),
+  ]
+  const overdueTodos = [...(data.overdueTodos ?? [])]
+    .filter(t => !t.is_complete)
+    .sort((a, b) => a.task_date.localeCompare(b.task_date))
   const weekEnd = (() => {
     const d = new Date(`${data.weekStart}T12:00:00Z`)
     d.setUTCDate(d.getUTCDate() + 6)
@@ -640,7 +667,7 @@ function DashboardView() {
     const nodes = data.tree ?? []
     const roots = new Set<string>()
     const add = (n: TreeNode | undefined) => { const r = rootOf(n, nodes); if (r) roots.add(r) }
-    for (const t of [...data.todos, ...laterThisWeek, ...nextWeekTodos]) {
+    for (const t of [...data.todos, ...overdueTodos, ...laterThisWeek, ...nextWeekTodos]) {
       add(t.source_item_id ? nodes.find(n => n.id === t.source_item_id) : undefined)
     }
     for (const i of [...itemsToday, ...itemsThisWeek, ...itemsNextWeek]) add(i.node)
@@ -708,14 +735,14 @@ function DashboardView() {
         <TimeBlock
           title="Today"
           when={mediumLabel(data.date)}
-          count={todayOpen.length + itemsToday.length}
+          count={todayOpen.length + overdueTodos.length + itemsToday.length}
           href={`/calendar?view=day&date=${data.date}`}
         >
           <AddToDay date={data.date} onAdd={addTodo} />
-          {todayAll.length === 0 && itemsToday.length === 0 ? (
+          {todayAll.length === 0 && overdueTodos.length === 0 && itemsToday.length === 0 ? (
             <p className="py-1 text-[12px] text-ink-3">Nothing on today.</p>
           ) : (
-            toRows(todayAll, itemsToday).map(r =>
+            toRows([...overdueTodos, ...todayAll], itemsToday).map(r =>
               r.todo ? (
                 <TodoLine key={r.key} todo={r.todo} onToggle={() => toggleTodo(r.todo!)}
                           tree={data.tree ?? []} today={data.date} onEdit={setActionTarget} onChanged={load} />
@@ -817,9 +844,9 @@ function DashboardView() {
             </span>
           )}
           {data.overdueCount > 0 && (
-            <Link href="/today" className="rounded-sm border border-line px-1.5 py-0.5 text-ink-2">
-              {data.overdueCount} late
-            </Link>
+            <span className="rounded-sm border border-dropped/40 bg-dropped-soft px-1.5 py-0.5 text-dropped">
+              {data.overdueCount} late — on today
+            </span>
           )}
           <span className="text-ink-3">routines {data.routines.done}/{data.routines.total}</span>
           {data.contributors.recentDone.length > 0 && (
@@ -1392,10 +1419,11 @@ function TodoLine({
    */
   const source = todo.source_item_id ? tree.find(n => n.id === todo.source_item_id) : undefined
   const parent = source?.parent_id ? tree.find(n => n.id === source.parent_id) : undefined
-  const slipped = todo.origin_date && todo.origin_date < todo.task_date
-    ? Math.round(
-        (Date.parse(`${todo.task_date}T12:00:00Z`) - Date.parse(`${todo.origin_date}T12:00:00Z`))
-        / 86400000)
+  // How far behind: from the day it was meant for to today — not to task_date,
+  // which for a previous-week task is frozen where rollover stopped at Sunday.
+  const meantFor = todo.origin_date ?? todo.task_date
+  const slipped = today && meantFor < today
+    ? Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${meantFor}T12:00:00Z`)) / 86400000)
     : 0
   const dueIn = source?.due_date && today
     ? Math.round(
