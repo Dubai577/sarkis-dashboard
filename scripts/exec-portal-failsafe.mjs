@@ -18,7 +18,7 @@ const live = async () =>
 const before = await live()
 let threw = false
 try {
-  await syncExecPortal(db, { feedUrl: env.EXEC_PORTAL_FEED_URL, token: 'wrong-token' })
+  await syncExecPortal(db, { feedUrl: env.EXEC_PORTAL_FEED_URL, token: 'wrong-token', source: 'exec-portal' })
 } catch (e) {
   threw = true
   console.log('  threw:', e.message)

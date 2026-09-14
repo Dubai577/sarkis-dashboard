@@ -26,6 +26,33 @@ import { today as todayIso, addDays } from '../dates.ts'
 export interface ExecPortalConfig {
   feedUrl: string
   token: string
+  /** Which portal. Defaults to the first one this was built for. */
+  source?: string
+  /** The project row's title on first creation. */
+  title?: string
+}
+
+/**
+ * Every portal that speaks this feed format. Adding a club is one line here
+ * and two env vars. The first entry keeps its unprefixed markers for
+ * compatibility with rows that already exist; every later one prefixes its
+ * markers with its source, because external_uid is unique across ALL sources
+ * and two portals cannot both own 'project:root'.
+ */
+export const PORTALS = [
+  { source: 'exec-portal', title: 'OCCM Exec', urlEnv: 'EXEC_PORTAL_FEED_URL', tokenEnv: 'EXEC_PORTAL_TOKEN' },
+  { source: 'h4hvt',       title: 'H4HVT',     urlEnv: 'H4HVT_FEED_URL',       tokenEnv: 'H4HVT_TOKEN' },
+] as const
+
+export const PORTAL_SOURCES = new Set<string>(PORTALS.map(p => p.source))
+
+/** The portals with both env vars present. */
+export function configuredPortals(env: Record<string, string | undefined>): ExecPortalConfig[] {
+  return PORTALS.flatMap(p => {
+    const feedUrl = env[p.urlEnv]
+    const token = env[p.tokenEnv]
+    return feedUrl && token ? [{ feedUrl, token, source: p.source, title: p.title }] : []
+  })
 }
 
 interface FeedPerson { id: string; name: string }
@@ -66,6 +93,7 @@ interface Feed {
 }
 
 export interface ExecPortalReport {
+  source: string
   member: string | null
   tasks: number
   mine: number
@@ -85,16 +113,28 @@ export interface ExecPortalReport {
 }
 
 export const SOURCE = 'exec-portal'
-/** The stable marker on the project row. Title is free to change. */
-export const PROJECT_UID = 'project:root'
 export const PROJECT_TITLE = 'OCCM Exec'
+
 /**
- * Your own group. A fixed marker rather than assignee:<your id>, so the
- * dashboard and the evening email can tell "mine" from "someone else's"
- * without knowing who you are on the portal.
+ * Marker uids, per source. The original portal's are bare ('project:root',
+ * 'assignee:me'); any other portal's are prefixed ('h4hvt:project:root') so
+ * they cannot collide in the one unique index that spans every source.
  */
-export const ME_UID = 'assignee:me'
-export const assigneeUid = (id: string) => `assignee:${id}`
+export function markers(source: string) {
+  const prefix = source === SOURCE ? '' : `${source}:`
+  return {
+    project: `${prefix}project:root`,
+    /**
+     * Your own group. A fixed marker rather than assignee:<your id>, so the
+     * dashboard and the evening email can tell "mine" from "someone else's"
+     * without knowing who you are on that portal.
+     */
+    me: `${prefix}assignee:me`,
+    assignee: (id: string) => `${prefix}assignee:${id}`,
+  }
+}
+export const PROJECT_UID = markers(SOURCE).project
+export const ME_UID = markers(SOURCE).me
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any
@@ -153,12 +193,12 @@ export function isForeign(
   row: { external_source?: string | null; parent_id?: string | null },
   byId: Map<string, { external_uid?: string | null }>,
 ): boolean {
-  if (row.external_source !== SOURCE) return false
+  if (!row.external_source || !PORTAL_SOURCES.has(row.external_source)) return false
   const parent = row.parent_id ? byId.get(row.parent_id) : undefined
   const uid = parent?.external_uid ?? null
   // Under an assignee group that is not 'me' -> theirs. Under the root or
   // under 'me' -> mine (or unassigned, which you should see).
-  return uid !== null && uid.startsWith('assignee:') && uid !== ME_UID
+  return uid !== null && uid.includes('assignee:') && !uid.endsWith('assignee:me')
 }
 
 /**
@@ -208,6 +248,8 @@ export async function syncExecPortal(
   const errors: string[] = []
   if (!Array.isArray(feed.all_tasks)) throw new Error('Exec portal feed had no all_tasks array.')
   const mineIds = new Set(feed.tasks.map(t => t.id))
+  const source = config.source ?? SOURCE
+  const M = markers(source)
 
   const { data: allItems, error: readErr } = await db.from('items').select('*')
   if (readErr) throw readErr
@@ -220,19 +262,19 @@ export async function syncExecPortal(
 
   // ── the project row, found by marker ──
   let project = items.find(
-    i => i.external_source === SOURCE && i.external_uid === PROJECT_UID,
+    i => i.external_source === source && i.external_uid === M.project,
   )
   let projectCreated = false
   if (!project) {
     const { data, error } = await db
       .from('items')
       .insert({
-        title: PROJECT_TITLE,
+        title: config.title ?? PROJECT_TITLE,
         parent_id: null,
         is_group: true,
         board: 'pinned',
-        external_source: SOURCE,
-        external_uid: PROJECT_UID,
+        external_source: source,
+        external_uid: M.project,
         external_synced_at: new Date().toISOString(),
       })
       .select('*')
@@ -256,16 +298,16 @@ export async function syncExecPortal(
   const groups = new Map<string, string>()   // uid -> item id
   const groupsCreated: string[] = []
   const wanted = new Map<string, string>()   // uid -> title
-  wanted.set(ME_UID, `${feed.member.name} (me)`)
+  wanted.set(M.me, `${feed.member.name} (me)`)
   for (const t of feed.all_tasks) {
     for (const a of t.assignees ?? []) {
       if (a.id === feed.member.id) continue
-      wanted.set(assigneeUid(a.id), a.name)
+      wanted.set(M.assignee(a.id), a.name)
     }
   }
 
   for (const [uid, title] of wanted) {
-    const existing = items.find(i => i.external_source === SOURCE && i.external_uid === uid)
+    const existing = items.find(i => i.external_source === source && i.external_uid === uid)
     if (existing) {
       groups.set(uid, existing.id)
       const fix: Record<string, unknown> = {}
@@ -281,7 +323,7 @@ export async function syncExecPortal(
         title,
         parent_id: project!.id,
         is_group: true,
-        external_source: SOURCE,
+        external_source: source,
         external_uid: uid,
         external_synced_at: new Date().toISOString(),
       })
@@ -300,10 +342,10 @@ export async function syncExecPortal(
    */
   const homeFor = (t: FeedTask): string => {
     if (mineIds.has(t.id) || (t.assignees ?? []).some(a => a.id === feed.member.id)) {
-      return groups.get(ME_UID)!
+      return groups.get(M.me)!
     }
     const first = (t.assignees ?? [])[0]
-    return (first && groups.get(assigneeUid(first.id))) ?? project!.id
+    return (first && groups.get(M.assignee(first.id))) ?? project!.id
   }
   const notesFor = (t: FeedTask): string | null => {
     // Name everyone EXCEPT whoever it is filed under: 'With Maria' on a task
@@ -319,9 +361,9 @@ export async function syncExecPortal(
   }
 
   // ── tasks ──
-  const isGroupUid = (uid: string | null) => uid === PROJECT_UID || (uid ?? '').startsWith('assignee:')
+  const isGroupUid = (uid: string | null) => uid === M.project || (uid ?? '').includes('assignee:')
   const mine = items.filter(
-    i => i.external_source === SOURCE && i.external_uid && !isGroupUid(i.external_uid),
+    i => i.external_source === source && i.external_uid && !isGroupUid(i.external_uid),
   )
   const byUid = new Map(mine.map(i => [i.external_uid!, i]))
   const seen = new Set<string>()
@@ -350,7 +392,7 @@ export async function syncExecPortal(
         priority: seedPriority(task.priority),
         link: task.url ?? null,
         external_uid: task.id,
-        external_source: SOURCE,
+        external_source: source,
         external_synced_at: new Date().toISOString(),
       })
       if (error) throw error
@@ -420,10 +462,16 @@ export async function syncExecPortal(
       note: u.note,
       created_at: u.created_at,
       synced_at: new Date().toISOString(),
+      source,
     }))
-    const { error } = await db
-      .from('exec_portal_updates')
-      .upsert(rows, { onConflict: 'id' })
+    let { error } = await db.from('exec_portal_updates').upsert(rows, { onConflict: 'id' })
+    // `source` arrives with migration 020. Until then, drop it and retry —
+    // the PENDING_COLUMNS pattern from lib/db/items.ts.
+    if (error?.code === 'PGRST204' && String(error.message).includes('source')) {
+      ;({ error } = await db
+        .from('exec_portal_updates')
+        .upsert(rows.map(({ source: _s, ...rest }) => rest), { onConflict: 'id' }))
+    }
     if (error) {
       if (isMissingTable(error)) {
         // Tolerated until migration 019 runs, per the PENDING_COLUMNS pattern.
@@ -437,6 +485,7 @@ export async function syncExecPortal(
   }
 
   return {
+    source,
     member: feed.member?.name ?? null,
     tasks: feed.all_tasks.length,
     mine: feed.tasks.length,

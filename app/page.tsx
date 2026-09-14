@@ -64,7 +64,11 @@ interface Todo {
 interface ExecUpdate {
   id: string; task_id: string; task_title: string
   author_name: string | null; note: string; created_at: string
+  source?: string
 }
+
+/** Club names for the comments panel, keyed by portal source. */
+const PORTAL_NAMES: Record<string, string> = { 'exec-portal': 'OCCM', h4hvt: 'H4HVT' }
 
 interface Payload {
   date: string
@@ -629,6 +633,9 @@ function DashboardView() {
                   </span>
                   <span className="min-w-0 flex-1 truncate text-[10.5px] text-ink-3" title={u.task_title}>
                     on {u.task_title}
+                    {u.source && PORTAL_NAMES[u.source] && (
+                      <span className="ml-1 rounded-sm bg-surface-3 px-1 text-[9px]">{PORTAL_NAMES[u.source]}</span>
+                    )}
                   </span>
                   <span className="shrink-0 text-[10px] tnum text-ink-3">
                     {relativeTime(u.created_at)}

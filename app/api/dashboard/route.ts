@@ -213,7 +213,9 @@ export async function GET() {
      */
     const execRes = await db
       .from('exec_portal_updates')
-      .select('id,task_id,task_title,author_name,note,created_at')
+      // '*' on purpose: `source` arrives with migration 020, and naming it
+      // before then would fail the whole read and hide the panel.
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(8)
     // When the portal was last pulled, so the page can decide it is stale.
