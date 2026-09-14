@@ -130,6 +130,13 @@ function DashboardView() {
    */
   const [openedFully, setOpenedFully] = useState<Set<string>>(new Set())
   /**
+   * Projects showing their finished work. Hidden by default: a term of
+   * ticked-off coursework is a record, not a plan, and on the board it was
+   * pushing the unfinished work below the fold. A count beside the title
+   * says it is there; one click shows it.
+   */
+  const [showDone, setShowDone] = useState<Set<string>>(new Set())
+  /**
    * How rows are ordered inside a single day.
    *
    * A day is a bag of a dozen things from five classes, and which order they
@@ -358,18 +365,23 @@ function DashboardView() {
     .map(p => {
       const direct = childrenOf(p.id)
       const horizoned = p.title.trim().toUpperCase() === 'VT'
-      return {
-        project: p,
-        loose: direct.filter(n => !isContainer(n)).map(asChild).filter(keep),
-        departments: direct.filter(isContainer).map(d => {
-          const all = childrenOf(d.id).map(asChild).filter(keep)
-          // Only coursework is capped; a convent department has no horizon.
-          const capped = horizoned && !openedFully.has(d.id)
-            ? all.filter(c => !c.due_date || c.due_date <= horizon)
-            : all
-          return { node: d, rows: capped, hiddenCount: all.length - capped.length }
-        }),
+      const showingDone = showDone.has(p.id)
+      let doneCount = 0
+      const dropDone = (rows: Child[]) => {
+        const done = rows.filter(c => c.progress === 'done')
+        doneCount += done.length
+        return showingDone ? rows : rows.filter(c => c.progress !== 'done')
       }
+      const loose = dropDone(direct.filter(n => !isContainer(n)).map(asChild).filter(keep))
+      const departments = direct.filter(isContainer).map(d => {
+        const all = dropDone(childrenOf(d.id).map(asChild).filter(keep))
+        // Only coursework is capped; a convent department has no horizon.
+        const capped = horizoned && !openedFully.has(d.id)
+          ? all.filter(c => !c.due_date || c.due_date <= horizon)
+          : all
+        return { node: d, rows: capped, hiddenCount: all.length - capped.length }
+      })
+      return { project: p, loose, departments, doneCount }
     })
     .filter(g => lens === 'all'
       || g.loose.length > 0
@@ -658,7 +670,7 @@ function DashboardView() {
             toRows(todayAll, itemsToday).map(r =>
               r.todo ? (
                 <TodoLine key={r.key} todo={r.todo} onToggle={() => toggleTodo(r.todo!)}
-                          tree={data.tree ?? []} today={data.date} onEdit={setActionTarget} />
+                          tree={data.tree ?? []} today={data.date} onEdit={setActionTarget} onChanged={load} />
               ) : (
                 <DatedItem key={r.key} node={r.item!.node} kind={r.item!.kind}
                            tree={data.tree ?? []} onOpen={t => setActionTarget(t)} />
@@ -683,6 +695,7 @@ function DashboardView() {
             today={data.date}
             onToggle={toggleTodo}
             onEdit={setActionTarget}
+            onChanged={load}
           />
 
           <div className="mt-2 flex items-baseline gap-2 border-t-2 border-line pt-1.5">
@@ -701,6 +714,7 @@ function DashboardView() {
             today={data.date}
             onToggle={toggleTodo}
             onEdit={setActionTarget}
+            onChanged={load}
           />
         </TimeBlock>
       </div>
@@ -811,7 +825,7 @@ function DashboardView() {
         <span className="text-[10px] tnum text-ink-3">{shownRows} of {tally.all}</span>
       </div>
 
-      {groups.map(({ project, loose, departments }, gi) => (
+      {groups.map(({ project, loose, departments, doneCount }, gi) => (
         <section
           key={project.id}
           ref={el => { groupRefs.current[project.id] = el }}
@@ -844,6 +858,23 @@ function DashboardView() {
             >
               <PencilIcon size={12} />
             </button>
+            {doneCount > 0 && (
+              <button
+                onClick={() => setShowDone(prev => {
+                  const n = new Set(prev)
+                  n.has(project.id) ? n.delete(project.id) : n.add(project.id)
+                  return n
+                })}
+                className={`rounded-full border px-1.5 text-[10px] tnum ${
+                  showDone.has(project.id)
+                    ? 'border-done bg-done-soft text-done'
+                    : 'border-line text-ink-3 hover:text-ink-2'
+                }`}
+                title={showDone.has(project.id) ? 'Hide finished work' : 'Show finished work'}
+              >
+                {doneCount} done {showDone.has(project.id) ? '\u2713' : '\u00b7 show'}
+              </button>
+            )}
             <button onClick={() => setDrillRoot(project.id)}
                     className="text-[10px] tnum text-ink-3 underline underline-offset-2">
               {project.open} ›
@@ -1032,7 +1063,7 @@ function DashboardView() {
  * the other that drifts.
  */
 function WeekHalf({
-  days, empty, addTodo, toRows, tree, today, onToggle, onEdit,
+  days, empty, addTodo, toRows, tree, today, onToggle, onEdit, onChanged,
 }: {
   days: [string, { todos: Todo[]; items: { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[] }][]
   empty: string
@@ -1044,6 +1075,7 @@ function WeekHalf({
   today: string
   onToggle: (t: Todo) => void
   onEdit: (t: ActionTarget) => void
+  onChanged: () => void
 }) {
   if (days.length === 0) return <p className="py-1 text-[12px] text-ink-3">{empty}</p>
   return (
@@ -1067,7 +1099,7 @@ function WeekHalf({
           {toRows(todos, items).map(r =>
             r.todo ? (
               <TodoLine key={r.key} todo={r.todo} onToggle={() => onToggle(r.todo!)}
-                        tree={tree} today={today} onEdit={onEdit} />
+                        tree={tree} today={today} onEdit={onEdit} onChanged={onChanged} />
             ) : (
               <DatedItem key={r.key} node={r.item!.node} kind={r.item!.kind}
                          tree={tree} onOpen={onEdit} />
@@ -1200,13 +1232,52 @@ function AddToDay({
 }
 
 function TodoLine({
-  todo, onToggle, showDay, tree = [], today, onEdit,
+  todo, onToggle, showDay, tree = [], today, onEdit, onChanged,
 }: {
   todo: Todo; onToggle: () => void; showDay?: boolean
   tree?: TreeNode[]; today?: string
   /** Opens the item behind this task, when there is one. */
   onEdit?: (t: ActionTarget) => void
+  /** After a plain todo is renamed, moved or deleted in place. */
+  onChanged?: () => void
 }) {
+  /**
+   * A plain todo has no item behind it, so the item editor has nothing to
+   * open. It gets its own three fields in place: the name, the day, and
+   * delete. That is everything a plain dated task is.
+   */
+  const [editing, setEditing] = useState(false)
+  const [draftTitle, setDraftTitle] = useState(todo.title)
+  const [draftDate, setDraftDate] = useState(todo.task_date)
+  const [busy, setBusy] = useState(false)
+
+  async function savePlain() {
+    const title = draftTitle.trim()
+    if (!title) return
+    setBusy(true)
+    try {
+      await fetch(`/api/todos/${todo.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, task_date: draftDate }),
+      })
+      setEditing(false)
+      onChanged?.()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function deletePlain() {
+    setBusy(true)
+    try {
+      await fetch(`/api/todos/${todo.id}`, { method: 'DELETE' })
+      setEditing(false)
+      onChanged?.()
+    } finally {
+      setBusy(false)
+    }
+  }
   /**
    * A materialised item carries context a bare todo does not: which class it
    * belongs to, when it is actually due, and — if rollover has walked it
@@ -1227,6 +1298,44 @@ function TodoLine({
     ? Math.round(
         (Date.parse(`${source.due_date}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000)
     : null
+
+  if (editing && !source) {
+    return (
+      <div className="border-b border-line/60 py-1.5 last:border-b-0">
+        <input
+          autoFocus
+          value={draftTitle}
+          onChange={e => setDraftTitle(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') savePlain()
+            if (e.key === 'Escape') setEditing(false)
+          }}
+          className="mb-1 w-full rounded-sm border border-line bg-surface-2 px-1.5 py-[3px] text-[12.5px]
+                     outline-none focus:border-mine"
+        />
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date"
+            value={draftDate}
+            onChange={e => setDraftDate(e.target.value)}
+            className="rounded-sm border border-line bg-surface-2 px-1.5 py-[3px] text-[11px] tnum outline-none focus:border-mine"
+          />
+          <button disabled={busy} onClick={savePlain}
+                  className="rounded-md bg-mine px-2 py-[3px] text-[11px] font-medium text-bg">
+            Save
+          </button>
+          <button disabled={busy} onClick={() => setEditing(false)}
+                  className="text-[11px] text-ink-3">
+            Cancel
+          </button>
+          <button disabled={busy} onClick={deletePlain}
+                  className="ml-auto text-[11px] text-dropped">
+            Delete
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-start gap-1.5 border-b border-line/60 py-1 last:border-b-0">
@@ -1258,20 +1367,26 @@ function TodoLine({
         where you could tick something off but not change it — and it is the
         surface you look at most.
       */}
-      {onEdit && source && (
-        <button
-          onClick={() => onEdit({
-            id: source.id, title: source.title, parent_id: source.parent_id,
-            planned_date: source.planned_date, due_date: source.due_date,
-            status: source.status, progress: source.progress ?? null,
-          })}
-          aria-label={`Edit ${todo.title}`}
-          title="Edit — dates, where it lives, progress"
-          className="shrink-0 rounded p-0.5 text-ink-3 opacity-60 hover:text-mine hover:opacity-100"
-        >
-          <PencilIcon size={11} />
-        </button>
-      )}
+      <button
+        onClick={() => {
+          if (source && onEdit) {
+            onEdit({
+              id: source.id, title: source.title, parent_id: source.parent_id,
+              planned_date: source.planned_date, due_date: source.due_date,
+              status: source.status, progress: source.progress ?? null,
+            })
+          } else {
+            setDraftTitle(todo.title)
+            setDraftDate(todo.task_date)
+            setEditing(true)
+          }
+        }}
+        aria-label={`Edit ${todo.title}`}
+        title={source ? 'Edit — dates, where it lives, progress' : 'Rename, move, or delete'}
+        className="mt-[2px] shrink-0 rounded p-0.5 text-ink-3 opacity-60 hover:text-mine hover:opacity-100"
+      >
+        <PencilIcon size={11} />
+      </button>
 
       {parent && (
         <span className="mt-[3px] max-w-[40%] shrink text-right text-[10px] leading-tight text-ink-3">

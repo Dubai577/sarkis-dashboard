@@ -28,13 +28,17 @@ import { today as todayIso, weekStart, addDays, type IsoDate } from '@/lib/dates
 
 export interface SyncResult {
   created: number
+  /** Open mirrors moved because their source's planned date changed. */
+  moved: number
+  /** Open mirrors removed because their source lost its planned date. */
+  removed: number
   skipped: number
   detail: { source: string; title: string; landed: IsoDate; origin: IsoDate }[]
 }
 
 export async function runSync(now: IsoDate = todayIso()): Promise<SyncResult> {
   const db = createAdminClient()
-  const result: SyncResult = { created: 0, skipped: 0, detail: [] }
+  const result: SyncResult = { created: 0, moved: 0, removed: 0, skipped: 0, detail: [] }
 
   // Landing date: the intended date if it is still ahead, otherwise today.
   const landOn = (intended: IsoDate): IsoDate => (intended < now ? now : intended)
@@ -50,8 +54,51 @@ export async function runSync(now: IsoDate = todayIso()): Promise<SyncResult> {
     // Completed rows count too. Completing a synced todo no longer archives its
     // source, so matching only open rows would re-materialize everything the
     // moment it was ticked off.
-    db.from('todos').select('id,source_item_id,source_sweat_id,origin_date,is_complete'),
+    db.from('todos').select('id,source_item_id,source_sweat_id,origin_date,is_complete,placement'),
   ])
+
+  /**
+   * Open mirrors, by source. When a source's planned date changes, its open
+   * mirror MOVES rather than a second one being inserted: the partial unique
+   * index allows one open row per source, so the insert this used to attempt
+   * was rejected with 23505 and swallowed as "already done" — which left the
+   * old todo where it was, and rollover then walked it onto today. Changing a
+   * planned date looked like it did nothing.
+   *
+   * origin_date is what the mirror was made FOR; task_date is where rollover
+   * has carried it. Comparing the plan to origin_date, not task_date, is what
+   * keeps this from snapping a rolled-over todo back every morning.
+   *
+   * Only auto-placed mirrors move. A todo you dragged to a day by hand is a
+   * decision, and a changed plan on the item does not overrule it.
+   */
+  const openBySource = new Map(
+    (existing ?? [])
+      .filter(t => t.source_item_id && !t.is_complete)
+      .map(t => [t.source_item_id as string, t]),
+  )
+  const plannedIds = new Set((items ?? []).map(i => i.id))
+
+  for (const item of items ?? []) {
+    const open = openBySource.get(item.id)
+    if (!open || open.origin_date === item.planned_date || open.placement !== 'auto') continue
+    const origin = item.planned_date as IsoDate
+    const { error } = await db
+      .from('todos')
+      .update({ task_date: landOn(origin), origin_date: origin, roll_count: 0, title: item.title })
+      .eq('id', open.id)
+    if (error) throw error
+    result.moved += 1
+  }
+
+  // A source that lost its plan (or was archived) leaves an orphan mirror on
+  // the day. Remove it — by its own id, never by pattern.
+  for (const [sourceId, open] of openBySource) {
+    if (plannedIds.has(sourceId) || open.placement !== 'auto') continue
+    const { error } = await db.from('todos').delete().eq('id', open.id)
+    if (error) throw error
+    result.removed += 1
+  }
 
   /**
    * Already materialized, keyed by source AND the date it was materialized for.
@@ -68,6 +115,8 @@ export async function runSync(now: IsoDate = todayIso()): Promise<SyncResult> {
 
   for (const item of items ?? []) {
     if (seen.has(`${item.id}|${item.planned_date}`)) { result.skipped += 1; continue }
+    // Moved above; it now carries this plan.
+    if (openBySource.has(item.id)) { result.skipped += 1; continue }
     const origin = item.planned_date as IsoDate
     const landed = landOn(origin)
     rows.push({
