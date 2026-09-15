@@ -171,6 +171,8 @@ export function followUpFor(
   row: {
     title: string; due_date?: string | null; progress?: string | null
     external_source?: string | null; parent_id?: string | null
+    /** A day you chose to follow up on, overriding the day-before default. */
+    follow_up_on?: string | null
   },
   byId: Map<string, { title: string; external_uid?: string | null }>,
   today: string,
@@ -179,8 +181,20 @@ export function followUpFor(
   if (!row.due_date || row.progress === 'done') return null
   const parent = row.parent_id ? byId.get(row.parent_id) : undefined
   const person = (parent?.title ?? 'them').replace(/\s*\(me\)$/, '')
-  const dayBefore = addDays(row.due_date, -1)
-  const date = dayBefore < today ? today : dayBefore
+
+  /**
+   * Your chosen day wins while it is still ahead. "Follow up Friday, after
+   * the exam" is a decision, and the day-before default must not keep
+   * dragging it back onto today. Once Friday has passed and the task is
+   * still open, the nag resumes — a chosen day is a deferral, not a dismissal.
+   */
+  let date: string
+  if (row.follow_up_on && row.follow_up_on >= today) {
+    date = row.follow_up_on
+  } else {
+    const dayBefore = addDays(row.due_date, -1)
+    date = dayBefore < today ? today : dayBefore
+  }
   return {
     person,
     date,

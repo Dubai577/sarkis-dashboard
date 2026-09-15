@@ -98,6 +98,12 @@ export interface Item {
   external_source?: string | null
   external_uid?: string | null
   external_synced_at?: string | null
+  /**
+   * For a teammate's portal task: the day you chose to follow up, overriding
+   * the day-before default while it is still ahead. Yours; the sync never
+   * writes it.
+   */
+  follow_up_on?: string | null
 
   waiting_on: Uuid | null
   waiting_since: IsoDate | null

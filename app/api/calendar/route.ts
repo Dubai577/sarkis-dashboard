@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
         .gte('task_date', from).lte('task_date', to)
         .order('task_date').order('sort_order'),
       db.from('items')
-        .select('id,title,planned_date,due_date,category_id,waiting_on,waiting_since,nudge_after,parent_id,progress,external_source,external_uid')
+        .select('id,title,planned_date,due_date,category_id,waiting_on,waiting_since,nudge_after,parent_id,progress,external_source,external_uid,follow_up_on')
         .is('archived_at', null)
         // One day wider on the due side: a foreign task due on `from` shows as
         // a follow-up the day before, which is inside the window it was

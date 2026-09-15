@@ -536,8 +536,14 @@ function DashboardView() {
     d.setUTCDate(d.getUTCDate() + 6)
     return d.toISOString().slice(0, 10)
   })()
+  /**
+   * "This week" is the REST of the week — always from tomorrow. This used to
+   * start at the week's first day when today was that day, so every Monday
+   * today's rows appeared twice: once under Today, once under a Monday header
+   * inside This week.
+   */
   const itemsThisWeek = (datedOn(
-    data.date > data.weekStart ? nextDay(data.date) : data.weekStart, weekEnd,
+    nextDay(data.date), weekEnd,
   ) as { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[])
 
   /**
@@ -748,7 +754,8 @@ function DashboardView() {
                           tree={data.tree ?? []} today={data.date} onEdit={setActionTarget} onChanged={load} />
               ) : (
                 <DatedItem key={r.key} node={r.item!.node} kind={r.item!.kind}
-                           tree={data.tree ?? []} onOpen={t => setActionTarget(t)} />
+                           tree={data.tree ?? []} onOpen={t => setActionTarget(t)}
+                           today={data.date} onChanged={load} />
               ),
             )
           )}
@@ -1232,7 +1239,7 @@ function WeekHalf({
                         tree={tree} today={today} onEdit={onEdit} onChanged={onChanged} />
             ) : (
               <DatedItem key={r.key} node={r.item!.node} kind={r.item!.kind}
-                         tree={tree} onOpen={onEdit} />
+                         tree={tree} onOpen={onEdit} today={today} onChanged={onChanged} />
             ),
           )}
         </section>
@@ -1273,13 +1280,56 @@ function TimeBlock({
  * exactly what this app spent its life avoiding.
  */
 function DatedItem({
-  node, kind, tree, onOpen,
+  node, kind, tree, onOpen, today, onChanged,
 }: {
   node: TreeNode
   kind: 'planned' | 'due' | 'followup'
   tree: TreeNode[]
   onOpen: (t: ActionTarget) => void
+  today?: string
+  onChanged?: () => void
 }) {
+  /**
+   * Defer a follow-up to a day you choose.
+   *
+   * The day-before default puts a teammate's overdue task on your Today every
+   * morning. That is right as a default and wrong the week of an exam: you
+   * cannot reach out until Friday, and being reminded every day until then is
+   * noise with a guilt trip attached. One click moves it; it comes back if
+   * the task is still open once that day has passed.
+   */
+  const [picking, setPicking] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  async function deferTo(date: string) {
+    setBusy(true)
+    try {
+      await fetch(`/api/items/${node.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ follow_up_on: date }),
+      })
+      setPicking(false)
+      onChanged?.()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Tomorrow, then each of the next five weekdays by name.
+  const quickDays = (() => {
+    if (!today) return [] as { date: string; label: string }[]
+    const out: { date: string; label: string }[] = []
+    for (let i = 1; i <= 7 && out.length < 5; i++) {
+      const d = new Date(`${today}T12:00:00Z`)
+      d.setUTCDate(d.getUTCDate() + i)
+      const iso = d.toISOString().slice(0, 10)
+      const dow = d.getUTCDay()
+      if (dow === 0 || dow === 6) continue
+      out.push({ date: iso, label: i === 1 ? 'Tomorrow' : DAY_NAMES[dayIndex(iso)].slice(0, 3) })
+    }
+    return out
+  })()
   const byId = new Map(tree.map(n => [n.id, n]))
   const parts: string[] = []
   let cursor = node.parent_id
@@ -1318,6 +1368,42 @@ function DatedItem({
       >
         {label}
       </button>
+      {kind === 'followup' && today && (
+        picking ? (
+          <span className="flex shrink-0 flex-wrap items-center gap-1">
+            {quickDays.map(q => (
+              <button key={q.date} disabled={busy} onClick={() => deferTo(q.date)}
+                      className="rounded-full border border-line px-1.5 text-[10px] hover:border-mine hover:text-mine">
+                {q.label}
+              </button>
+            ))}
+            <input
+              type="date"
+              min={today}
+              onChange={e => { if (e.target.value) deferTo(e.target.value) }}
+              className="w-[112px] rounded-sm border border-line bg-surface-2 px-1 text-[10px] tnum"
+            />
+            <button onClick={() => setPicking(false)} className="text-[10px] text-ink-3">cancel</button>
+          </span>
+        ) : (
+          <button
+            onClick={() => setPicking(true)}
+            title={node.follow_up_on && node.follow_up_on >= today
+              ? `Following up ${mediumLabel(node.follow_up_on)} — change`
+              : 'Follow up on a later day instead'}
+            className={`mt-[2px] shrink-0 rounded-full border px-1.5 text-[10px] ${
+              node.follow_up_on && node.follow_up_on >= today
+                ? 'border-theirs/40 text-theirs'
+                : 'border-line text-ink-3 hover:border-mine hover:text-mine'
+            }`}
+          >
+            {node.follow_up_on && node.follow_up_on >= today
+              ? mediumLabel(node.follow_up_on)
+              : '→ day'}
+          </button>
+        )
+      )}
+
       {where && (
         <span className="mt-[3px] max-w-[40%] shrink text-right text-[10px] leading-tight text-ink-3">{where}</span>
       )}

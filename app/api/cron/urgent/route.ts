@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
      */
     const { data: all, error } = await db
       .from('items')
-      .select('id,title,due_date,progress,parent_id,external_source,external_uid')
+      .select('id,title,due_date,progress,parent_id,external_source,external_uid,follow_up_on')
       .is('archived_at', null)
     if (error) throw error
 

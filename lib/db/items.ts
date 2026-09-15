@@ -34,7 +34,7 @@ export interface ItemView extends Item {
  * lands, the flag is simply not recorded until the migration runs.
  */
 const PENDING_COLUMNS =
-  ['is_group', 'link', 'progress', 'planned_auto',
+  ['is_group', 'link', 'progress', 'planned_auto', 'follow_up_on',
    'external_uid', 'external_source', 'external_synced_at'] as const
 
 /**

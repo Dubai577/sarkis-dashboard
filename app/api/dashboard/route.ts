@@ -279,6 +279,7 @@ export async function GET() {
         foreign: isForeign(i, itemsById),
         // ...but it reaches your day as a follow-up, the day before it is due.
         followUp: followUpFor(i, itemsById, now),
+        follow_up_on: i.follow_up_on ?? null,
       })),
       projects,
       school,
