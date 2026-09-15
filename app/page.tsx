@@ -485,7 +485,9 @@ function DashboardView() {
 
   const datedOn = (from: string, to: string) => (data.tree ?? [])
     .filter(n => n.parent_id && n.isGroup !== true)
-    .filter(n => n.progress !== 'done')
+    // Finished ones stay on their day, struck through and sunk, exactly as a
+    // ticked todo does. Dropping them the instant they were ticked took away
+    // the strike-through, and with it the only reward the list gives.
     .filter(n => !mirrored.has(n.id))
     .map(n => {
       /**
@@ -495,7 +497,7 @@ function DashboardView() {
        */
       if (n.foreign) {
         const f = n.followUp
-        if (!f || f.date < from || f.date > to) return null
+        if (!f || n.progress === 'done' || f.date < from || f.date > to) return null
         return { node: n, when: f.date, kind: 'followup' as const }
       }
       const planned = n.planned_date && n.planned_date >= from && n.planned_date <= to
@@ -1316,6 +1318,35 @@ function DatedItem({
     }
   }
 
+  /**
+   * Mark it done from the row, the way a todo row can.
+   *
+   * These rows had no checkbox because they are items, not todos, and the
+   * only way to finish one was the sheet. Same tick, same place, same
+   * behaviour: struck through, sinks after two seconds. Not offered on a
+   * follow-up — that is someone else's task, and finishing it is theirs.
+   */
+  const [ticking, setTicking] = useState(false)
+  // Shown as done the instant it is ticked; the list reorders two seconds
+  // later, so the row does not leap away under the cursor.
+  const [localDone, setLocalDone] = useState<boolean | null>(null)
+  const isDone = localDone ?? node.progress === 'done'
+  async function toggleDone() {
+    const next = !isDone
+    setLocalDone(next)
+    setTicking(true)
+    try {
+      await fetch(`/api/items/${node.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ progress: next ? 'done' : null }),
+      })
+      setTimeout(() => onChanged?.(), next ? 2000 : 0)
+    } finally {
+      setTicking(false)
+    }
+  }
+
   // Tomorrow, then each of the next five weekdays by name.
   const quickDays = (() => {
     if (!today) return [] as { date: string; label: string }[]
@@ -1350,6 +1381,15 @@ function DatedItem({
 
   return (
     <div className="flex items-start gap-1.5 border-b border-line/60 py-1 last:border-b-0">
+      {kind !== 'followup' && onChanged && (
+        <span className="mt-[1px]">
+          <Check
+            checked={isDone}
+            onChange={() => { if (!ticking) toggleDone() }}
+            label={`Complete ${node.title}`}
+          />
+        </span>
+      )}
       <span className={`mt-[3px] shrink-0 rounded-sm px-1 text-[8.5px] uppercase tracking-wider ${
         kind === 'due' ? 'bg-dropped-soft text-dropped'
           : kind === 'followup'
@@ -1364,7 +1404,9 @@ function DatedItem({
           planned_date: node.planned_date, due_date: node.due_date,
           status: node.status, progress: node.progress ?? null,
         })}
-        className="min-w-0 flex-1 break-words text-left text-[12.5px] leading-snug"
+        className={`min-w-0 flex-1 break-words text-left text-[12.5px] leading-snug ${
+          isDone ? 'text-ink-3 line-through' : ''
+        }`}
       >
         {label}
       </button>

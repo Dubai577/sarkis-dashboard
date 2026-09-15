@@ -380,6 +380,7 @@ export async function syncExecPortal(
     i => i.external_source === source && i.external_uid && !isGroupUid(i.external_uid),
   )
   const byUid = new Map(mine.map(i => [i.external_uid!, i]))
+  const existingProgress = (uid: string) => byUid.get(uid)?.progress ?? null
   const seen = new Set<string>()
 
   let created = 0
@@ -392,8 +393,17 @@ export async function syncExecPortal(
     seen.add(task.id)
     const existing = byUid.get(task.id)
     const notes = notesFor(task)
-    const progress = progressOf(task.status)
     const parentId = homeFor(task)
+    /**
+     * Your tick sticks. The portal still drives progress — its 'done' lands
+     * here, its 'in_progress' lands here — but it never turns a task you
+     * marked done back into an open one. Without this, ticking an imported
+     * task off Today was undone by the next pull, which is worse than no
+     * checkbox at all. The cost is that a task reopened on the portal after
+     * you ticked it here stays done here; untick it if that happens.
+     */
+    const fromPortal = progressOf(task.status)
+    const progress = existingProgress(task.id) === 'done' ? 'done' : fromPortal
 
     if (!existing) {
       const { error } = await db.from('items').insert({
