@@ -91,6 +91,15 @@ export async function PATCH(
 
   if (Object.keys(patch).length === 0) return badRequest('No writable fields supplied.')
 
+  /**
+   * The database has an updated_at column and no trigger to maintain it —
+   * update_updated_at() was never installed (see the note on migration 007).
+   * So every write stamps it here. Without this, "what did I finish today"
+   * is unanswerable for an item, because a done item looks exactly like one
+   * done last month.
+   */
+  patch.updated_at = new Date().toISOString()
+
   try {
     const db = createAdminClient()
 

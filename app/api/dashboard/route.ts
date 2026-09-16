@@ -58,7 +58,11 @@ export async function GET() {
       // Sunday, so a task that survives the week is not carried forward — it
       // is late, and late belongs at the top of today rather than behind a
       // badge on a different page.
-      db.from('todos').select('*').lt('week_start', start).eq('is_complete', false)
+      // Open ones, plus anything finished since yesterday: the page keeps a
+      // late task you ticked today on show, struck through. The bound is a
+      // day wide in UTC so the page's Eastern "today" check has what it needs.
+      db.from('todos').select('*').lt('week_start', start)
+        .or(`is_complete.eq.false,completed_at.gte.${addDays(now, -1)}T00:00:00Z`)
         .order('task_date'),
       db.from('categories').select('id,name,color').order('sort_order'),
       db.from('people').select('id,name').order('name'),
@@ -280,6 +284,7 @@ export async function GET() {
         // ...but it reaches your day as a follow-up, the day before it is due.
         followUp: followUpFor(i, itemsById, now),
         follow_up_on: i.follow_up_on ?? null,
+        updated_at: i.updated_at ?? null,
       })),
       projects,
       school,

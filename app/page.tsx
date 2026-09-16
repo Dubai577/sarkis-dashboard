@@ -11,7 +11,7 @@ import { ItemActions, ActionChip, type ActionTarget } from '@/components/ItemAct
 import {
   ChevronDownIcon, ChevronUpIcon, ExternalIcon, PencilIcon,
 } from '@/components/ui/Icon'
-import { dayIndex, DAY_NAMES, mediumLabel, relativeTime } from '@/lib/dates'
+import { dayIndex, DAY_NAMES, mediumLabel, relativeTime, today as dateOf } from '@/lib/dates'
 
 /**
  * The dashboard — one tab, all of it, visible at once.
@@ -54,6 +54,7 @@ interface Project {
 interface Todo {
   id: string; title: string; task_date: string; is_complete: boolean
   start_time: string | null
+  completed_at?: string | null
   /** The item this was materialised from, if any. */
   source_item_id?: string | null
   /** The date it was originally meant to happen, before any rollover. */
@@ -314,7 +315,17 @@ function DashboardView() {
     // outside the day view strikes through with it.
     const tree = (data.tree ?? []).map(n =>
       n.id === todo.source_item_id ? { ...n, progress: next ? 'done' as const : null } : n)
-    setData({ ...data, todos: patch(data.todos), weekTodos: patch(data.weekTodos), tree })
+    // Every list the row could be in — the overdue one was missed, so ticking
+    // a task carried from last week changed nothing on screen.
+    const stamp = (l: Todo[]) => patch(l).map(t =>
+      t.id === todo.id ? { ...t, completed_at: next ? new Date().toISOString() : null } : t)
+    setData({
+      ...data,
+      todos: stamp(data.todos),
+      weekTodos: stamp(data.weekTodos),
+      overdueTodos: stamp(data.overdueTodos ?? []),
+      tree,
+    })
 
     try {
       const res = await fetch(`/api/todos/${todo.id}/complete`, {
@@ -519,9 +530,19 @@ function DashboardView() {
    * Both are the most urgent things you own, and the most urgent thing you own
    * should not be the hardest to find.
    */
+  /**
+   * Done today counts as today's. A late task you finish this afternoon must
+   * not vanish the moment you tick it — it stays at the bottom, struck
+   * through, until tomorrow. That is what a ticked todo does, and the reward
+   * of seeing what you got through is the same either way.
+   */
+  const doneToday = (stamp: string | null | undefined) =>
+    !!stamp && dateOf(new Date(stamp)) === data.date
+
   const overdueItems = (data.tree ?? [])
     .filter(n => n.parent_id && n.isGroup !== true)
-    .filter(n => n.progress !== 'done' && !mirrored.has(n.id) && !n.foreign)
+    .filter(n => !mirrored.has(n.id) && !n.foreign)
+    .filter(n => n.progress !== 'done' || doneToday(n.updated_at))
     .filter(n => n.due_date && n.due_date < data.date)
     .map(n => ({ node: n, when: n.due_date!, kind: 'due' as const }))
     .sort((a, b) => a.when.localeCompare(b.when))
@@ -531,7 +552,7 @@ function DashboardView() {
     ...(datedOn(data.date, data.date) as { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[]),
   ]
   const overdueTodos = [...(data.overdueTodos ?? [])]
-    .filter(t => !t.is_complete)
+    .filter(t => !t.is_complete || doneToday(t.completed_at))
     .sort((a, b) => a.task_date.localeCompare(b.task_date))
   const weekEnd = (() => {
     const d = new Date(`${data.weekStart}T12:00:00Z`)

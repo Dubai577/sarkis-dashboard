@@ -48,6 +48,7 @@ export interface TreeNode {
   /** ...except as a follow-up, the day before it is due. */
   followUp?: { person: string; date: string; overdue: boolean; title: string } | null
   follow_up_on?: string | null
+  updated_at?: string | null
 }
 
 const PRIORITY_RANK: Record<string, number> = { Urgent: 0, Soon: 1, Whenever: 2, 'N/A': 3 }
