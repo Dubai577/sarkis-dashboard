@@ -33,14 +33,21 @@ export type PlanRule =
  * Per class. Anything not listed falls back to DEFAULT_RULE, which is stated
  * rather than silent so an unplanned class is visible rather than surprising.
  */
+/**
+ * Courses no longer taken.
+ *
+ * The feed keeps publishing a dropped class all term. Archiving its rows is
+ * not enough on its own — anything newly posted would arrive as a fresh,
+ * unarchived task — so the sync skips these outright.
+ */
+export const IGNORED_COURSES = new Set<string>(['MSE 2034'])
+
 export const RULES: Record<string, PlanRule> = {
   // All three are due every Friday, so "the Wednesday before" is both the
   // requested Wednesday night and robust if a deadline slides within its week.
   'BMES 2004': { kind: 'weekday', weekday: 3 },
   'BMES 3004': { kind: 'weekday', weekday: 3 },
   'BMES 3224': { kind: 'weekday', weekday: 3 },
-  // Deadlines land Thu/Tue/Wed/Fri, all of which have a Monday before them.
-  'MSE 2034': { kind: 'weekday', weekday: 1 },
   // Work can be posted the same day, so there is no room for more than a day.
   'ISE 3434': { kind: 'offset', days: 1 },
   // Three days back puts a Sunday deadline on Thursday on its own, which is

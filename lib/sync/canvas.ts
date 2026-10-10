@@ -2,7 +2,7 @@
 // scripts/canvas-sync.mjs as well as by the route, and plain Node does not
 // know the alias. One import style that works in both beats two code paths.
 import { parseIcs, upcoming, type IcsEvent } from '../ics.ts'
-import { planFor } from './planning.ts'
+import { planFor, IGNORED_COURSES } from './planning.ts'
 
 /**
  * The Canvas sync itself, separate from the route that triggers it.
@@ -56,6 +56,9 @@ export async function syncCanvas(db: Db, feedUrls: string[], today: string): Pro
 
   // A term's worth. Older work is history; a year out is noise.
   const window = upcoming(events, today, 120)
+    // A dropped course keeps publishing all term. Skip it at the door rather
+    // than archiving each new arrival.
+    .filter(e => !e.course || !IGNORED_COURSES.has(e.course))
 
   const { data: allItems, error: readErr } = await db
     .from('items')

@@ -2,7 +2,7 @@
  * The planning rules, checked case by case.
  *   node scripts/test-planning.mjs
  */
-import { planFor, isExam } from '../lib/sync/planning.ts'
+import { planFor, isExam, IGNORED_COURSES } from '../lib/sync/planning.ts'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const day = iso => DOW[new Date(`${iso}T12:00:00Z`).getUTCDay()]
@@ -46,25 +46,20 @@ console.log('\n── the rule that beats every rule ──')
 const everyDay = []
 for (let d = 1; d <= 28; d++) {
   const due = `2026-09-${String(d).padStart(2, '0')}`
-  for (const course of ['BMES 2004', 'ISE 3434', 'EGR 240', 'MSE 2034', 'ISE 4644', null]) {
+  for (const course of ['BMES 2004', 'ISE 3434', 'EGR 240', 'ISE 4644', null]) {
     const p = planFor(course, due, 'Assignment')
     if (p) everyDay.push({ course, due, p, d: day(p) })
   }
 }
 eq('nothing planned on Fri/Sat/Sun', everyDay.filter(x => ['Fri', 'Sat', 'Sun'].includes(x.d)).length, 0)
 eq('nothing planned on or after its due date', everyDay.filter(x => x.p >= x.due).length, 0)
-eq('(cases checked)', everyDay.length >= 150, true)
+eq('(cases checked)', everyDay.length >= 120, true)
 console.log(`  ${everyDay.length} course/deadline combinations swept`)
-
-console.log('\n── Elem of Mat Eng: the Monday before ──')
-for (const due of ['2026-09-10', '2026-09-08', '2026-09-09', '2026-09-04']) {
-  const p = planFor('MSE 2034', due, 'HW')
-  eq(`due ${due} ${day(due)} -> ${p} ${day(p)}`, day(p), 'Mon')
-  eq('  and strictly before the deadline', p < due, true)
-}
 
 console.log('\n── unlisted classes fall back to two days ──')
 eq('ISE 4644 Thu deadline -> Tue', day(planFor('ISE 4644', '2026-09-10', 'HW')), 'Tue')
+// MSE 2034 was dropped; it is ignored at the door, so it never reaches a rule.
+eq('a dropped course is ignored', IGNORED_COURSES.has('MSE 2034'), true)
 eq('ISE 4644 Tue deadline -> Sun becomes Thu', day(planFor('ISE 4644', '2026-09-08', 'HW')), 'Thu')
 
 console.log('\n── the buffer is never zero ──')
