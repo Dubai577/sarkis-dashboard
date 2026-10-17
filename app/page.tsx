@@ -186,6 +186,15 @@ function DashboardView() {
    */
   const [lateOpen, setLateOpen] = useState<boolean | null>(null)
   /**
+   * Sub-projects the reader has opened.
+   *
+   * A class with forty assignments under it drowns every other project on the
+   * board. Anything holding more than a handful starts folded, showing its
+   * count and what is next, so the board stays a board.
+   */
+  const [openDepts, setOpenDepts] = useState<Set<string>>(new Set())
+  const FOLD_OVER = 3
+  /**
    * Ticked in the last couple of seconds, and therefore still in place.
    *
    * Sorting completed rows to the bottom the instant the box is checked makes
@@ -474,7 +483,7 @@ function DashboardView() {
    * still open. Tapping it again puts it back.
    */
   const settled = (t: Todo) => t.is_complete && !justChecked.has(t.id)
-  const todayAll = [...data.todos].sort((a, b) =>
+  const todayAll = [...data.todos].filter(t => !lateIds.has(t.id)).sort((a, b) =>
     Number(settled(a)) - Number(settled(b))
     || (a.start_time ?? '').localeCompare(b.start_time ?? ''))
 
@@ -561,9 +570,22 @@ function DashboardView() {
     { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[]
   // Kept for the week/area helpers, which want everything on the day.
   const itemsToday = [...overdueItems, ...itemsDueToday]
-  const overdueTodos = [...(data.overdueTodos ?? [])]
+  /**
+   * Late is "meant for a day that has passed" — not "from an earlier week".
+   *
+   * The API finds overdue rows by week_start, but rollover lands a late task
+   * on TODAY, which gives it the current week_start. Such a row then showed
+   * under On today while its own badge said 2 days late. origin_date is what
+   * the task was meant for, so that is what decides.
+   */
+  const meantFor = (t: Todo) => t.origin_date ?? t.task_date
+  const overdueTodos = [...(data.overdueTodos ?? []), ...data.todos]
+    .filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
+    .filter(t => meantFor(t) < data.date)
     .filter(t => !t.is_complete || doneToday(t.completed_at))
-    .sort((a, b) => a.task_date.localeCompare(b.task_date))
+    .sort((a, b) => meantFor(a).localeCompare(meantFor(b)))
+
+  const lateIds = new Set(overdueTodos.map(t => t.id))
   const weekEnd = (() => {
     const d = new Date(`${data.weekStart}T12:00:00Z`)
     d.setUTCDate(d.getUTCDate() + 6)
@@ -1205,19 +1227,61 @@ function DashboardView() {
                 )}
               </div>
 
-              {rows.length === 0 ? (
-                <p className="pt-0.5 text-[10.5px] text-ink-3">
-                  {hiddenCount > 0 ? 'Nothing due in the next two weeks.' : 'Empty.'}
-                </p>
-              ) : (
-                <div className="flex flex-col items-start gap-y-[3px] pt-1">
-                  {rows.map(c => (
-                    <Chip key={c.id} child={c} parentId={node.id}
-                          onAction={t => setActionTarget(t)}
-                          onWait={() => setWaitingTarget(c)} />
-                  ))}
-                </div>
-              )}
+              {(() => {
+                if (rows.length === 0) {
+                  return (
+                    <p className="pt-0.5 text-[10.5px] text-ink-3">
+                      {hiddenCount > 0 ? 'Nothing due in the next two weeks.' : 'Empty.'}
+                    </p>
+                  )
+                }
+                const folded = rows.length > FOLD_OVER && !openDepts.has(node.id)
+                const open = rows.filter(c => c.progress !== 'done')
+                // The soonest thing still to do: the one line worth seeing
+                // while the rest stays folded.
+                const next = open
+                  .map(c => c.planned_date ?? c.due_date)
+                  .filter((d): d is string => !!d)
+                  .sort()[0]
+                const shown = folded ? rows.slice(0, 0) : rows
+                return (
+                  <>
+                    {folded && (
+                      <button
+                        onClick={() => setOpenDepts(prev => new Set(prev).add(node.id))}
+                        className="mt-0.5 flex w-full items-baseline gap-1.5 rounded-md border border-line/60
+                                   bg-surface px-1.5 py-1 text-left text-[11px] hover:border-mine/50"
+                      >
+                        <span className="font-medium text-ink-2">{open.length} to do</span>
+                        {rows.length - open.length > 0 && (
+                          <span className="text-[10px] text-ink-3">{rows.length - open.length} done</span>
+                        )}
+                        {next && <span className="text-[10px] text-ink-3">next {mediumLabel(next)}</span>}
+                        <span className="ml-auto text-[10px] text-mine">show</span>
+                      </button>
+                    )}
+                    {!folded && (
+                      <div className="flex flex-col items-start gap-y-[3px] pt-1">
+                        {shown.map(c => (
+                          <Chip key={c.id} child={c} parentId={node.id}
+                                onAction={t => setActionTarget(t)}
+                                onWait={() => setWaitingTarget(c)} />
+                        ))}
+                        {rows.length > FOLD_OVER && (
+                          <button
+                            onClick={() => setOpenDepts(prev => {
+                              const n = new Set(prev); n.delete(node.id); return n
+                            })}
+                            className="mt-0.5 text-[10px] text-ink-3 hover:text-mine"
+                          >
+                            fold
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
 
               {hiddenCount > 0 && (
                 <button

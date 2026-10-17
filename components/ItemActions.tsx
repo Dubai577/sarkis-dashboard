@@ -433,16 +433,29 @@ export function ActionChip({
   const target = item.planned_date ?? item.due_date
   const days = target ? daysUntil(target, now) : null
 
-  const label = days === null
-    ? (item.status === 'Ongoing' ? 'ongoing' : 'set')
-    : countdownLabel(days)
+  /**
+   * Finished work has no countdown.
+   *
+   * The chip read the dates and nothing else, so a task completed in September
+   * still announced "44 days late" on the board — and then was nowhere in the
+   * Late list, because that list correctly excludes finished work. The chip
+   * was the thing lying.
+   */
+  const done = item.progress === 'done'
+
+  const label = done
+    ? 'done'
+    : days === null
+      ? (item.status === 'Ongoing' ? 'ongoing' : 'set')
+      : countdownLabel(days)
 
   /**
    * Colour by how much room is left, not by which field it came from. Late is
    * late whether it was planned or due.
    */
-  const tone =
-    days === null
+  const tone = done
+    ? { dot: 'var(--done)', text: 'text-done border-done/40' }
+    : days === null
       ? item.status === 'Ongoing'
         ? { dot: 'var(--theirs)', text: 'text-theirs border-theirs/40' }
         : { dot: 'var(--border-2)', text: 'text-ink-3 border-line' }
