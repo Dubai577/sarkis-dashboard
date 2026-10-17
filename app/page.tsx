@@ -176,6 +176,16 @@ function DashboardView() {
    */
   const [dayArea, setDayArea] = useState<string | null>(null)
   /**
+   * Is the late block expanded.
+   *
+   * Late work was mixed into Today and sorted by deadline alongside it, so with
+   * thirty of them there was nothing marking where late ended and today began —
+   * the honest answer to "where are my late items" was "scattered through that
+   * list". It gets its own heading and count now. Collapsed by default once it
+   * is long, because otherwise today's actual work starts below the fold.
+   */
+  const [lateOpen, setLateOpen] = useState<boolean | null>(null)
+  /**
    * Ticked in the last couple of seconds, and therefore still in place.
    *
    * Sorting completed rows to the bottom the instant the box is checked makes
@@ -547,10 +557,10 @@ function DashboardView() {
     .map(n => ({ node: n, when: n.due_date!, kind: 'due' as const }))
     .sort((a, b) => a.when.localeCompare(b.when))
 
-  const itemsToday = [
-    ...overdueItems,
-    ...(datedOn(data.date, data.date) as { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[]),
-  ]
+  const itemsDueToday = datedOn(data.date, data.date) as
+    { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[]
+  // Kept for the week/area helpers, which want everything on the day.
+  const itemsToday = [...overdueItems, ...itemsDueToday]
   const overdueTodos = [...(data.overdueTodos ?? [])]
     .filter(t => !t.is_complete || doneToday(t.completed_at))
     .sort((a, b) => a.task_date.localeCompare(b.task_date))
@@ -768,10 +778,15 @@ function DashboardView() {
           href={`/calendar?view=day&date=${data.date}`}
         >
           <AddToDay date={data.date} onAdd={addTodo} />
-          {todayAll.length === 0 && overdueTodos.length === 0 && itemsToday.length === 0 ? (
-            <p className="py-1 text-[12px] text-ink-3">Nothing on today.</p>
-          ) : (
-            toRows([...overdueTodos, ...todayAll], itemsToday).map(r =>
+          {(() => {
+            const lateRows = toRows(overdueTodos, overdueItems)
+            const todayRows = toRows(todayAll, itemsDueToday)
+            const openLate = lateRows.filter(r => !r.done).length
+            // Long lists start closed so today's work is not pushed below the
+            // fold; short ones are just shown.
+            const expanded = lateOpen ?? lateRows.length <= 8
+
+            const render = (r: typeof lateRows[number]) =>
               r.todo ? (
                 <TodoLine key={r.key} todo={r.todo} onToggle={() => toggleTodo(r.todo!)}
                           tree={data.tree ?? []} today={data.date} onEdit={setActionTarget} onChanged={load} />
@@ -779,9 +794,56 @@ function DashboardView() {
                 <DatedItem key={r.key} node={r.item!.node} kind={r.item!.kind}
                            tree={data.tree ?? []} onOpen={t => setActionTarget(t)}
                            today={data.date} onChanged={load} />
-              ),
+              )
+
+            if (lateRows.length === 0 && todayRows.length === 0) {
+              return <p className="py-1 text-[12px] text-ink-3">Nothing on today.</p>
+            }
+
+            return (
+              <>
+                {lateRows.length > 0 && (
+                  <section id="late" className="mb-2 scroll-mt-16">
+                    <button
+                      onClick={() => setLateOpen(!expanded)}
+                      className="-mx-2 mb-0.5 flex w-[calc(100%+1rem)] items-baseline gap-2 border-y
+                                 border-dropped/30 bg-dropped-soft px-2 py-1 text-left"
+                    >
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-dropped">
+                        Late
+                      </span>
+                      <span className="text-[10.5px] tnum text-dropped/80">
+                        {openLate} outstanding
+                      </span>
+                      <span className="ml-auto text-[10px] text-dropped/70">
+                        {expanded ? 'hide' : 'show'}
+                      </span>
+                    </button>
+                    {expanded && lateRows.map(render)}
+                  </section>
+                )}
+
+                {todayRows.length > 0 && (
+                  <section>
+                    {lateRows.length > 0 && (
+                      <div className="-mx-2 mb-0.5 flex items-baseline gap-2 border-y border-line
+                                      bg-surface-2 px-2 py-1">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-ink">
+                          On today
+                        </span>
+                        <span className="text-[10.5px] tnum text-ink-2">{todayRows.length}</span>
+                      </div>
+                    )}
+                    {todayRows.map(render)}
+                  </section>
+                )}
+
+                {todayRows.length === 0 && (
+                  <p className="py-1 text-[12px] text-ink-3">Nothing new on today.</p>
+                )}
+              </>
             )
-          )}
+          })()}
         </TimeBlock>
 
         <TimeBlock
@@ -873,10 +935,17 @@ function DashboardView() {
               {data.droppedCount} need a nudge
             </span>
           )}
-          {data.overdueCount > 0 && (
-            <span className="rounded-sm border border-dropped/40 bg-dropped-soft px-1.5 py-0.5 text-dropped">
-              {data.overdueCount} late — on today
-            </span>
+          {overdueTodos.length + overdueItems.length > 0 && (
+            <button
+              onClick={() => {
+                setLateOpen(true)
+                document.getElementById('late')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}
+              className="rounded-sm border border-dropped/40 bg-dropped-soft px-1.5 py-0.5 text-dropped
+                         hover:border-dropped"
+            >
+              {overdueTodos.filter(t => !t.is_complete).length + overdueItems.length} late — show
+            </button>
           )}
           <span className="text-ink-3">routines {data.routines.done}/{data.routines.total}</span>
           {data.contributors.recentDone.length > 0 && (
