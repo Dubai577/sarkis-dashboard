@@ -193,6 +193,8 @@ function DashboardView() {
    * count and what is next, so the board stays a board.
    */
   const [openDepts, setOpenDepts] = useState<Set<string>>(new Set())
+  /** Late groups the reader has opened. Keyed by project name. */
+  const [openLateGroups, setOpenLateGroups] = useState<Set<string>>(new Set())
   const FOLD_OVER = 3
   /**
    * Ticked in the last couple of seconds, and therefore still in place.
@@ -844,7 +846,66 @@ function DashboardView() {
                         {expanded ? 'hide' : 'show'}
                       </span>
                     </button>
-                    {expanded && lateRows.map(render)}
+
+                    {expanded && (() => {
+                      /**
+                       * Grouped by project before anything is drawn.
+                       *
+                       * Half of a long late list is usually one class. Fourteen
+                       * consecutive Statics rows say the same thing fourteen
+                       * times and bury everything that is not Statics, which is
+                       * the part you can actually act on this morning.
+                       */
+                      const groups = new Map<string, typeof lateRows>()
+                      for (const r of lateRows) {
+                        const key = r.cls === '\uffff' ? '' : r.cls
+                        const g = groups.get(key) ?? []
+                        g.push(r)
+                        groups.set(key, g)
+                      }
+                      const big = [...groups.entries()]
+                        .filter(([key, rs]) => key && rs.length > FOLD_OVER)
+                        .sort((a, b) => b[1].length - a[1].length)
+                      const bigKeys = new Set(big.map(([k]) => k))
+                      const loose = lateRows.filter(r => !bigKeys.has(r.cls === '\uffff' ? '' : r.cls))
+
+                      const oldest = (rs: typeof lateRows) =>
+                        rs.map(r => r.todo ? (r.todo.origin_date ?? r.todo.task_date) : r.due)
+                          .filter(d => d && d !== '9999-12-31').sort()[0]
+
+                      return (
+                        <>
+                          {big.map(([key, rs]) => {
+                            const open = openLateGroups.has(key)
+                            const o = oldest(rs)
+                            return (
+                              <div key={key} className="mb-1">
+                                <button
+                                  onClick={() => setOpenLateGroups(prev => {
+                                    const n = new Set(prev)
+                                    n.has(key) ? n.delete(key) : n.add(key)
+                                    return n
+                                  })}
+                                  className="flex w-full items-baseline gap-1.5 rounded-md border border-dropped/25
+                                             bg-surface px-1.5 py-1 text-left text-[11.5px] hover:border-dropped/50"
+                                >
+                                  <span className="min-w-0 flex-1 truncate font-medium text-ink">{key}</span>
+                                  <span className="shrink-0 text-[10.5px] tnum text-dropped">{rs.length} late</span>
+                                  {o && (
+                                    <span className="shrink-0 text-[10px] tnum text-ink-3">
+                                      oldest {Math.round((Date.parse(`${data.date}T12:00:00Z`) - Date.parse(`${o}T12:00:00Z`)) / 86400000)}d
+                                    </span>
+                                  )}
+                                  <span className="shrink-0 text-[10px] text-mine">{open ? 'fold' : 'show'}</span>
+                                </button>
+                                {open && <div className="pl-1.5">{rs.map(render)}</div>}
+                              </div>
+                            )
+                          })}
+                          {loose.map(render)}
+                        </>
+                      )
+                    })()}
                   </section>
                 )}
 
