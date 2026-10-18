@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { Button, ErrorBanner, Field, inputClass } from '@/components/ui/primitives'
+import { countRows, looksLikeExport, parseBulk, type BulkRow } from '@/lib/bulk'
 
 /**
  * Bulk add — paste a list, commit it.
@@ -43,21 +44,15 @@ export default function BulkPage() {
     }).catch(() => {})
   }, [])
 
-  /** The same parse the server does, so the preview cannot mislead. */
-  const parsed = useMemo(() => {
-    const out: { title: string; children: string[] }[] = []
-    for (const raw of text.split(/\r?\n/)) {
-      if (!raw.trim()) continue
-      const indented = /^(\s{2,}|\t|[-*•>]\s)/.test(raw)
-      const title = raw.replace(/^[\s>\-*•]+/, '').trim()
-      if (!title) continue
-      if (indented && out.length > 0) out[out.length - 1].children.push(title)
-      else out.push({ title, children: [] })
-    }
-    return out
-  }, [text])
-
-  const totalRows = parsed.length + parsed.reduce((n, r) => n + r.children.length, 0)
+  /**
+   * Literally the same function the server runs. The previous preview had its
+   * own parser that disagreed with the server's — it treated every bulleted
+   * line as a child of the line above, so a paste of forty bullets previewed
+   * as one item with thirty-nine beneath it.
+   */
+  const parsed: BulkRow[] = useMemo(() => parseBulk(text), [text])
+  const isExport = useMemo(() => looksLikeExport(text), [text])
+  const totalRows = countRows(parsed)
 
   async function commit() {
     if (totalRows === 0) return
@@ -144,11 +139,29 @@ export default function BulkPage() {
             {totalRows > parsed.length && `, ${totalRows - parsed.length} nested`}
           </h2>
           <div className="rounded-md border border-line p-2">
+            {isExport && (
+              <p className="mb-1 text-[11px] text-ink-3">
+                This looks like an export file, so it will be read with its metadata
+                (categories, dates, people) rather than as plain lines.
+              </p>
+            )}
             {parsed.map((r, i) => (
               <div key={i}>
-                <div className="clamp-1 py-0.5 text-[13px]">{r.title}</div>
+                <div className="flex items-baseline gap-1.5 py-0.5">
+                  {r.isGroup && (
+                    <span className="shrink-0 rounded-sm px-1 text-[8px] uppercase tracking-wider text-bg"
+                          style={{ background: 'var(--band-edge)' }}>sub</span>
+                  )}
+                  <span className={`min-w-0 flex-1 break-words text-[13px] ${r.isGroup ? 'font-semibold' : ''}`}>
+                    {r.title}
+                  </span>
+                  {r.link && <span className="shrink-0 text-[10px] text-mine">link</span>}
+                </div>
                 {r.children.map((c, j) => (
-                  <div key={j} className="clamp-1 py-0.5 pl-4 text-[12px] text-ink-2">{c}</div>
+                  <div key={j} className="flex items-baseline gap-1.5 py-0.5 pl-4">
+                    <span className="min-w-0 flex-1 break-words text-[12px] text-ink-2">{c.title}</span>
+                    {c.link && <span className="shrink-0 text-[10px] text-mine">link</span>}
+                  </div>
                 ))}
               </div>
             ))}

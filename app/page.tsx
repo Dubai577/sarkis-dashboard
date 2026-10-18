@@ -497,16 +497,33 @@ function DashboardView() {
    * the task was meant for, so that is what decides.
    */
   const meantFor = (t: Todo) => t.origin_date ?? t.task_date
+  /**
+   * Outstanding only.
+   *
+   * Finished work was kept here so a tick would strike through before the row
+   * moved — but in a block headed "Late", a task you already did is noise, and
+   * it made the count argue with the list. It goes to On today instead, which
+   * is where "what I got through" belongs.
+   */
   const overdueTodos = [...(data.overdueTodos ?? []), ...data.todos]
     .filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
     .filter(t => meantFor(t) < data.date)
-    .filter(t => !t.is_complete || doneToday(t.completed_at))
+    .filter(t => !t.is_complete || justChecked.has(t.id))
     .sort((a, b) => meantFor(a).localeCompare(meantFor(b)))
+
+  /** Late work finished today: shown under On today, struck through. */
+  const lateDoneToday = [...(data.overdueTodos ?? []), ...data.todos]
+    .filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
+    .filter(t => meantFor(t) < data.date && t.is_complete && doneToday(t.completed_at))
+    .filter(t => !justChecked.has(t.id))
 
   const lateIds = new Set(overdueTodos.map(t => t.id))
 
   const settled = (t: Todo) => t.is_complete && !justChecked.has(t.id)
-  const todayAll = [...data.todos].filter(t => !lateIds.has(t.id)).sort((a, b) =>
+  const todayAll = [...data.todos, ...lateDoneToday]
+    .filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
+    .filter(t => !lateIds.has(t.id))
+    .sort((a, b) =>
     Number(settled(a)) - Number(settled(b))
     || (a.start_time ?? '').localeCompare(b.start_time ?? ''))
 
@@ -582,7 +599,7 @@ function DashboardView() {
   const overdueItems = (data.tree ?? [])
     .filter(n => n.parent_id && n.isGroup !== true)
     .filter(n => !mirrored.has(n.id) && !n.foreign)
-    .filter(n => n.progress !== 'done' || doneToday(n.updated_at))
+    .filter(n => n.progress !== 'done')
     .filter(n => n.due_date && n.due_date < data.date)
     .map(n => ({ node: n, when: n.due_date!, kind: 'due' as const }))
     .sort((a, b) => a.when.localeCompare(b.when))

@@ -4,6 +4,7 @@ import { denyUnlessAdmin } from '@/lib/auth/guard'
 import { badRequest, isIsoDate, readJson, serverError } from '@/lib/api/http'
 import { today as todayIso } from '@/lib/dates'
 import { parseText, type TextNode } from '@/lib/textformat'
+import { looksLikeExport, parseBulk, toTextNodes } from '@/lib/bulk'
 
 const MAX_LINES = 200
 
@@ -49,9 +50,11 @@ export async function POST(req: NextRequest) {
   try {
     const db = createAdminClient()
 
-    // The exporter writes this format and this parser reads it, so a file that
-    // came out of the app can be hand-edited and pasted straight back in.
-    const roots = parseText(text)
+    // A file that came out of the app round-trips through parseText; anything
+    // else is a brain-dump and gets the forgiving parser.
+    const roots: TextNode[] = looksLikeExport(text)
+      ? parseText(text)
+      : (toTextNodes(parseBulk(text)) as TextNode[])
     if (roots.length === 0) return badRequest('Nothing to add.')
 
     // Names resolve to ids once, so a whole paste costs two lookups.
