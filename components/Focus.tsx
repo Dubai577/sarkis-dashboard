@@ -159,6 +159,7 @@ export function Focus() {
         <span className="text-[10px] tnum text-ink-3">{list.length}</span>
       </div>
 
+      {/* the legend lives below the lists, see the note at the bottom */}
       {list.length === 0 ? (
         <p className="py-2 text-[12px] text-ink-3">
           {tab === 'do' ? 'Nothing urgent and important. That is the goal, not a gap.' : 'Empty.'}
@@ -252,6 +253,52 @@ export function Focus() {
           ))}
         </div>
       )}
+
+      {/*
+        The guide, rendered from the same QUADRANTS the lists are sorted by.
+        A legend written out by hand is a legend that quietly stops matching
+        the behaviour the first time a rule changes.
+      */}
+      <section className="mt-5 rounded-xl border border-line/50 bg-surface-2 p-3">
+        <h2 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-2">
+          What the four mean
+        </h2>
+        <p className="mb-2 text-[11px] leading-snug text-ink-3">
+          <span className="font-medium text-ink-2">Urgent</span> is worked out for you: late, or
+          due within {URGENT_WITHIN} days. It is read from the deadline, never from the day you
+          planned to do it — scheduling something for tomorrow is a decision you made, not a
+          reason it became urgent.{' '}
+          <span className="font-medium text-ink-2">Important</span> is the star, and the only
+          part you set.
+        </p>
+
+        <table className="w-full border-collapse">
+          <tbody>
+            {QUADRANTS.map(q => (
+              <tr key={q.key} className="border-t border-line/60 align-top">
+                <td className="py-1.5 pr-2 whitespace-nowrap">
+                  <span className="inline-flex items-baseline gap-1.5">
+                    <span className="h-3 w-[3px] shrink-0 translate-y-[2px] rounded-full"
+                          style={{ background: `var(${q.tone})` }} />
+                    <span className="text-[12px] font-semibold">{q.title}</span>
+                  </span>
+                </td>
+                <td className="py-1.5 pr-2 text-[11px] leading-snug text-ink-2">{q.blurb}</td>
+                <td className="py-1.5 whitespace-nowrap text-right text-[10.5px] text-mine">
+                  {q.verb}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <p className="mt-2 border-t border-line/60 pt-2 text-[11px] leading-snug text-ink-3">
+          The point of the four is not sorting. It is that <span className="text-ink-2">Schedule</span>{' '}
+          is the only quadrant that shrinks the others: everything in{' '}
+          <span className="text-ink-2">Do</span> was in Schedule once and was left there too long.
+          A week spent mostly in Schedule is a week that went well.
+        </p>
+      </section>
     </div>
   )
 }
