@@ -482,6 +482,27 @@ function DashboardView() {
    * through. Done work stays on today, struck through, and sinks below what is
    * still open. Tapping it again puts it back.
    */
+  /** Finished today, in the app's timezone — not finished at some point. */
+  const doneToday = (stamp: string | null | undefined) =>
+    !!stamp && dateOf(new Date(stamp)) === data.date
+
+  /**
+   * Late is "meant for a day that has passed" — not "from an earlier week".
+   *
+   * The API finds overdue rows by week_start, but rollover lands a late task
+   * on TODAY, which gives it the current week_start. Such a row then showed
+   * under On today while its own badge said 2 days late. origin_date is what
+   * the task was meant for, so that is what decides.
+   */
+  const meantFor = (t: Todo) => t.origin_date ?? t.task_date
+  const overdueTodos = [...(data.overdueTodos ?? []), ...data.todos]
+    .filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
+    .filter(t => meantFor(t) < data.date)
+    .filter(t => !t.is_complete || doneToday(t.completed_at))
+    .sort((a, b) => meantFor(a).localeCompare(meantFor(b)))
+
+  const lateIds = new Set(overdueTodos.map(t => t.id))
+
   const settled = (t: Todo) => t.is_complete && !justChecked.has(t.id)
   const todayAll = [...data.todos].filter(t => !lateIds.has(t.id)).sort((a, b) =>
     Number(settled(a)) - Number(settled(b))
@@ -555,8 +576,6 @@ function DashboardView() {
    * through, until tomorrow. That is what a ticked todo does, and the reward
    * of seeing what you got through is the same either way.
    */
-  const doneToday = (stamp: string | null | undefined) =>
-    !!stamp && dateOf(new Date(stamp)) === data.date
 
   const overdueItems = (data.tree ?? [])
     .filter(n => n.parent_id && n.isGroup !== true)
@@ -570,22 +589,6 @@ function DashboardView() {
     { node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup' }[]
   // Kept for the week/area helpers, which want everything on the day.
   const itemsToday = [...overdueItems, ...itemsDueToday]
-  /**
-   * Late is "meant for a day that has passed" — not "from an earlier week".
-   *
-   * The API finds overdue rows by week_start, but rollover lands a late task
-   * on TODAY, which gives it the current week_start. Such a row then showed
-   * under On today while its own badge said 2 days late. origin_date is what
-   * the task was meant for, so that is what decides.
-   */
-  const meantFor = (t: Todo) => t.origin_date ?? t.task_date
-  const overdueTodos = [...(data.overdueTodos ?? []), ...data.todos]
-    .filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
-    .filter(t => meantFor(t) < data.date)
-    .filter(t => !t.is_complete || doneToday(t.completed_at))
-    .sort((a, b) => meantFor(a).localeCompare(meantFor(b)))
-
-  const lateIds = new Set(overdueTodos.map(t => t.id))
   const weekEnd = (() => {
     const d = new Date(`${data.weekStart}T12:00:00Z`)
     d.setUTCDate(d.getUTCDate() + 6)
