@@ -31,13 +31,14 @@
 /** Due inside this many days counts as urgent. Late always does. */
 export const URGENT_WITHIN = 3
 
-export type Quadrant = 'do' | 'schedule' | 'delegate' | 'drop'
+export type Quadrant = 'do' | 'schedule' | 'pending' | 'drop'
 
 export interface FocusInput {
   due_date?: string | null
   planned_date?: string | null
   important?: boolean | null
   progress?: string | null
+  /** Set when the work sits with someone else. */
   waiting_on?: string | null
 }
 
@@ -57,12 +58,29 @@ export function isUrgent(item: FocusInput, today: string): boolean {
   return daysUntil(item.due_date, today) <= URGENT_WITHIN
 }
 
+/**
+ * Pending is checked first, and that is a deliberate departure.
+ *
+ * The textbook third quadrant is "delegate" — advice about what you SHOULD
+ * do with a task. That is useless once you have actually delegated it: the
+ * thing is no longer yours to do, but it is still yours to chase, and if it
+ * drops off the board you find out when someone asks why it never happened.
+ *
+ * So Pending is a state, not a judgement: anything sitting with another
+ * person. It outranks urgency and importance because "who has this" answers a
+ * different question from "how much does it matter", and the first question
+ * decides what you can actually do about it today — follow up, nothing else.
+ *
+ * Urgent-but-not-important still lands here too, which is the textbook advice
+ * arriving at the same place: these are the ones to hand over.
+ */
 export function quadrantOf(item: FocusInput, today: string): Quadrant {
+  if (item.waiting_on) return 'pending'
   const important = item.important === true
   const urgent = isUrgent(item, today)
   if (important && urgent) return 'do'
   if (important) return 'schedule'
-  if (urgent) return 'delegate'
+  if (urgent) return 'pending'
   return 'drop'
 }
 
@@ -70,28 +88,34 @@ export const QUADRANTS: {
   key: Quadrant
   title: string
   verb: string
+  /** Which corner of the matrix this is, in the matrix's own words. */
+  axes: string
   blurb: string
   /** CSS custom property holding the accent colour. */
   tone: string
 }[] = [
   {
     key: 'do', title: 'Do', verb: 'Today',
-    blurb: 'Important, and the deadline is here.',
+    axes: 'Urgent + Important',
+    blurb: 'A deadline or a real consequence, and it matters. This is the day.',
     tone: '--dropped',
   },
   {
     key: 'schedule', title: 'Schedule', verb: 'Pick a day',
-    blurb: 'Important, no deadline pressing. This is where a calm week is built — and where everything in Do came from.',
+    axes: 'Important, not urgent',
+    blurb: 'Unclear deadline, but it builds something. Give it a day before the deadline gives it one.',
     tone: '--theirs',
   },
   {
-    key: 'delegate', title: 'Hand off', verb: 'Waiting on',
-    blurb: 'A deadline, but not yours to carry. Give it to someone, or decide it matters after all.',
+    key: 'pending', title: 'Pending', verb: 'Chase it',
+    axes: 'With someone else',
+    blurb: 'Handed over, and still yours to chase. Also where urgent-but-minor belongs — those are the ones to give away.',
     tone: '--mine',
   },
   {
     key: 'drop', title: 'Not now', verb: 'Archive',
-    blurb: 'No deadline, not marked important. Most captured things live here, and that is fine — until you pretend otherwise.',
+    axes: 'Neither',
+    blurb: 'No deadline, not marked important. Most captured things live here, and that is fine until you pretend otherwise.',
     tone: '--border-2',
   },
 ]

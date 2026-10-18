@@ -25,6 +25,7 @@ interface Row {
   important: boolean | null
   progress: string | null
   waiting_on: string | null
+  waiting_since: string | null
   is_group_view?: boolean
   child_count: number
   archived_at?: string | null
@@ -60,7 +61,7 @@ export function Focus() {
   }, [rows])
 
   const buckets = useMemo(() => {
-    const out: Record<Quadrant, Row[]> = { do: [], schedule: [], delegate: [], drop: [] }
+    const out: Record<Quadrant, Row[]> = { do: [], schedule: [], pending: [], drop: [] }
     for (const r of leaves) out[quadrantOf(r, now)].push(r)
     const order = (a: Row, b: Row) =>
       (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999') || a.title.localeCompare(b.title)
@@ -141,6 +142,7 @@ export function Focus() {
                 <span className="text-[12px] font-semibold">{q.title}</span>
                 <span className="ml-auto text-[18px] font-semibold leading-none tnum">{n}</span>
               </div>
+              <p className="mt-0.5 text-[9.5px] uppercase tracking-wider text-ink-3">{q.axes}</p>
               <p className="mt-1 text-[10px] leading-snug text-ink-3">{q.blurb}</p>
             </button>
           )
@@ -162,7 +164,11 @@ export function Focus() {
       {/* the legend lives below the lists, see the note at the bottom */}
       {list.length === 0 ? (
         <p className="py-2 text-[12px] text-ink-3">
-          {tab === 'do' ? 'Nothing urgent and important. That is the goal, not a gap.' : 'Empty.'}
+          {tab === 'do'
+            ? 'Nothing urgent and important. That is the goal, not a gap.'
+            : tab === 'pending'
+              ? 'Nothing sitting with anyone else.'
+              : 'Empty.'}
         </p>
       ) : (
         <div className="rounded-xl border border-line/50 bg-surface shadow-card">
@@ -188,6 +194,14 @@ export function Focus() {
                     r.due_date < now ? 'text-dropped' : 'text-ink-3'
                   }`}>
                     due {mediumLabel(r.due_date)}
+                  </span>
+                )}
+                {r.waiting_on && (
+                  <span className="shrink-0 rounded-full bg-mine-soft px-1.5 text-[10px] text-mine">
+                    {people.find(p => p.id === r.waiting_on)?.name ?? 'someone'}
+                    {r.waiting_since && ` · ${Math.max(0, Math.round(
+                      (Date.parse(`${now}T12:00:00Z`) - Date.parse(`${r.waiting_since}T12:00:00Z`)) / 86400000,
+                    ))}d`}
                   </span>
                 )}
                 {where(r) && (
@@ -220,16 +234,18 @@ export function Focus() {
                   )
                 ) : null}
 
-                {(tab === 'delegate' || tab === 'drop') && (
+                {(tab === 'pending' || tab === 'drop') && (
                   <select
                     value={r.waiting_on ?? ''}
                     onChange={e => patch(r.id, {
                       waiting_on: e.target.value || null,
+                      // Restarting the clock on a re-assign is right: the wait
+                      // began when THIS person got it, not the last one.
                       waiting_since: e.target.value ? now : null,
                     })}
                     className="rounded-full border border-line bg-surface-2 px-1.5 text-[10px]"
                   >
-                    <option value="">Hand off to…</option>
+                    <option value="">{r.waiting_on ? 'Take it back' : 'Hand it to…'}</option>
                     {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 )}
@@ -283,7 +299,9 @@ export function Focus() {
                     <span className="text-[12px] font-semibold">{q.title}</span>
                   </span>
                 </td>
-                <td className="py-1.5 pr-2 text-[11px] leading-snug text-ink-2">{q.blurb}</td>
+                <td className="py-1.5 pr-2 text-[11px] leading-snug text-ink-2">
+                  <span className="text-ink-3">{q.axes}.</span> {q.blurb}
+                </td>
                 <td className="py-1.5 whitespace-nowrap text-right text-[10.5px] text-mine">
                   {q.verb}
                 </td>
