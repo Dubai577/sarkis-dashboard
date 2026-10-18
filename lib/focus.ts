@@ -141,7 +141,7 @@ export const QUADRANTS: {
 export const PENDING = {
   title: 'Pending',
   verb: 'Follow up',
-  blurb: 'Already with someone else. Not yours to do, still yours to chase — which is why it is kept here rather than dropped off the board.',
+  blurb: 'Handed to someone else and kept here on purpose: not yours to do, still yours to remember. It leaves when they finish it or you take it back.',
   tone: '--theirs',
 }
 

@@ -40,6 +40,14 @@ export function Focus() {
   const [tab, setTab] = useState<Lane>('do')
   const [busy, setBusy] = useState<string | null>(null)
   const [picking, setPicking] = useState<string | null>(null)
+  /**
+   * The how-to opens by itself until something has been starred.
+   *
+   * A manual nobody can find is a manual nobody reads, and the moment it is
+   * needed is the first time — before a single judgement has been made. Once
+   * work is marked, it folds away and stays where it can be reopened.
+   */
+  const [howOpen, setHowOpen] = useState<boolean | null>(null)
   const now = todayIso()
 
   const load = useCallback(async () => {
@@ -114,6 +122,9 @@ export function Focus() {
 
   if (loading) return <p className="p-4 text-[12px] text-ink-3">Loading…</p>
 
+  const anyStarred = rows.some(r => r.important)
+  const showHow = howOpen ?? !anyStarred
+
   const meta = tab === 'pending' ? PENDING : QUADRANTS.find(q => q.key === tab)!
   const list = buckets[tab]
   const note = readOnDo(buckets.do.length, buckets.schedule.length)
@@ -125,6 +136,96 @@ export function Focus() {
         Urgency is read from the deadline — late, or due within {URGENT_WITHIN} days — so it is
         never out of date. Importance is the one thing only you can say.
       </p>
+
+      {/*
+        ── how to decide ──
+
+        Urgency the app works out; importance it cannot. So this explains the
+        one judgement being asked for, in the terms the matrix itself uses,
+        with the test that actually settles it: not "is this big" but "what
+        would it cost me if it never happened".
+      */}
+      <section className="mb-3 rounded-xl border border-line/50 bg-surface-2">
+        <button
+          onClick={() => setHowOpen(!showHow)}
+          className="flex w-full items-baseline gap-2 px-3 py-2 text-left"
+        >
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-2">
+            How to decide
+          </span>
+          <span className="text-[10px] text-ink-3">urgent vs important</span>
+          <span className="ml-auto text-[10px] text-mine">{showHow ? 'hide' : 'show'}</span>
+        </button>
+
+        {showHow && (
+          <div className="border-t border-line/60 px-3 py-2.5">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <h3 className="text-[11.5px] font-semibold text-ink">
+                  Urgent <span className="font-normal text-ink-3">— worked out for you</span>
+                </h3>
+                <p className="mt-1 text-[11.5px] leading-snug text-ink-2">
+                  A deadline close enough to bite: late, or due within {URGENT_WITHIN} days.
+                  Read from the due date, so it is never out of date and you never set it.
+                </p>
+                <p className="mt-1.5 rounded-md bg-surface px-2 py-1.5 text-[11px] leading-snug text-ink-2">
+                  <span className="font-medium">The test:</span> if I do not do this by then,
+                  what actually happens? If you can name the consequence and it has a date,
+                  it is urgent.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-[11.5px] font-semibold text-ink">
+                  Important <span className="font-normal text-ink-3">— only you can say</span>
+                </h3>
+                <p className="mt-1 text-[11.5px] leading-snug text-ink-2">
+                  It moves something you would still care about in a month — your degree, your
+                  health, a promise to someone who matters, a thing you chose. It does not need
+                  a deadline to deserve your time.
+                </p>
+                <p className="mt-1.5 rounded-md bg-surface px-2 py-1.5 text-[11px] leading-snug text-ink-2">
+                  <span className="font-medium">The test:</span> if this never got done, what
+                  would I have lost? If the honest answer is nothing, leave the star off.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-md border border-line/60 bg-surface p-2">
+              <p className="text-[11px] font-medium text-ink-2">Worked examples</p>
+              <table className="mt-1 w-full border-collapse">
+                <tbody className="align-top">
+                  {([
+                    ['Do', 'Assignment due tonight · exam tomorrow · a real emergency'],
+                    ['Schedule', 'A project due in three months · reviewing notes · exercise · setting goals with someone'],
+                    ['Hand off or skip', 'Answering messages · a favour someone asked for · an event announced today · an interruption from work'],
+                    ['Not now', 'Scrolling · a meeting nobody needed · two hours on the phone · another episode'],
+                  ] as const).map(([k, v]) => (
+                    <tr key={k} className="border-t border-line/50 first:border-t-0">
+                      <td className="w-[108px] py-1 pr-2 text-[11px] font-medium text-ink">{k}</td>
+                      <td className="py-1 text-[11px] leading-snug text-ink-3">{v}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="mt-2.5 text-[11px] leading-snug text-ink-2">
+              <span className="font-medium">The trap this exists to catch:</span> loud is not the
+              same as important. Eisenhower quoted it as{' '}
+              <span className="italic">“the urgent are not important, and the important are never
+              urgent.”</span>{' '}Someone else&rsquo;s deadline arriving in your inbox is urgent to
+              them; whether it is important to you is a separate question, and answering it is the
+              whole exercise.
+            </p>
+
+            <p className="mt-2 text-[11px] leading-snug text-ink-3">
+              Columbia&rsquo;s handout suggests keeping each box under about ten. If Do has twenty
+              in it, that is not a plan — it is the week telling you Schedule was skipped.
+            </p>
+          </div>
+        )}
+      </section>
 
       {/*
         Pending sits above the grid rather than in it. The matrix sorts work
