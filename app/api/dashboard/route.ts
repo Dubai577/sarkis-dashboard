@@ -284,6 +284,8 @@ export async function GET() {
         // ...but it reaches your day as a follow-up, the day before it is due.
         followUp: followUpFor(i, itemsById, now),
         follow_up_on: i.follow_up_on ?? null,
+        important: i.important === true,
+        waiting_on: i.waiting_on ?? null,
         updated_at: i.updated_at ?? null,
       })),
       projects,

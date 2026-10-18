@@ -25,6 +25,7 @@ export interface ActionTarget {
   id: string
   title: string
   progress?: Progress
+  important?: boolean | null
   parent_id?: string | null
   planned_date: string | null
   due_date: string | null
@@ -105,6 +106,7 @@ export function ItemActions({
         due_date: live.due_date,
         status: live.status,
         progress: live.progress ?? null,
+        important: live.important === true,
       }
     : item
 
@@ -215,6 +217,31 @@ export function ItemActions({
                 : shape === 'sub'
                   ? `A department under ${byId.get(current.parent_id ?? '')?.title ?? '— pick one below'}. It can hold its own tasks.`
                   : `Under ${byId.get(current.parent_id ?? '')?.title ?? '— pick one below'}. Pick a department below and it is a task under a sub-project.`}
+          </p>
+        </section>
+
+        {/*
+          ── does it matter ──
+
+          The half of the time matrix nothing can compute. Urgency is read from
+          the due date and keeps itself current; this is the judgment, and it
+          only has to be made once.
+        */}
+        <section>
+          <button
+            disabled={busy}
+            onClick={() => patch({ important: !current.important })}
+            className={`w-full rounded-md border py-1.5 text-[11.5px] ${
+              current.important
+                ? 'border-mine bg-mine-soft text-mine'
+                : 'border-line text-ink-2'
+            }`}
+          >
+            {current.important ? '★  Important' : '☆  Mark important'}
+          </button>
+          <p className="mt-1 text-[10px] leading-snug text-ink-3">
+            Important and urgent is today. Important and not urgent is what Focus asks you to
+            schedule, before it becomes today by neglect.
           </p>
         </section>
 

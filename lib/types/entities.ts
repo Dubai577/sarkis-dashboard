@@ -104,6 +104,11 @@ export interface Item {
    * writes it.
    */
   follow_up_on?: string | null
+  /**
+   * The half of the time matrix software cannot compute. Urgency comes from
+   * the due date and updates itself; this is the judgment only you can make.
+   */
+  important?: boolean | null
 
   waiting_on: Uuid | null
   waiting_since: IsoDate | null

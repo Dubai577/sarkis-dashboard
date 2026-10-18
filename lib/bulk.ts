@@ -59,9 +59,18 @@ export function parseBulk(text: string): BulkRow[] {
     const line = raw.replace(/^\s+/, '').replace(BULLET, '').trim()
     if (!line) continue
 
-    // A bare URL belongs to whatever came before it.
+    /**
+     * A bare URL belongs to whatever came before it — unless it was bulleted,
+     * which means the writer meant it as its own item. Without that exception a
+     * bulleted link overwrites the link on the row above, silently losing one
+     * of the two.
+     */
     const only = line.match(URL_ONLY)
-    if (only) { if (!attach(only[1])) out.push({ title: only[1], children: [] }); continue }
+    if (only) {
+      if (!bulleted && attach(only[1])) continue
+      out.push({ title: only[1], link: only[1], children: [] })
+      continue
+    }
 
     // Text with a URL in it: keep the words, keep the link.
     let title = line

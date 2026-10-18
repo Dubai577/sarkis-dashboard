@@ -35,6 +35,12 @@ eq('  as its link', u[0].link, 'https://example.com/x')
 const u2 = parseBulk('- check this https://example.com/y')
 eq('a url in a line keeps the words', u2[0].title, 'check this')
 eq('  and takes the link', u2[0].link, 'https://example.com/y')
+// A bulleted url is a deliberate separate item, not a link for the row above.
+const u4 = parseBulk(['- buy a thing https://example.com/p',
+                      '- https://example.com/q'].join(String.fromCharCode(10)))
+eq('a bulleted url is its own row', u4.length, 2)
+eq('  and does not steal the first link', u4[0].link, 'https://example.com/p')
+
 const u3 = parseBulk('https://example.com/z')
 eq('a url with nothing above becomes its own row', u3[0].title, 'https://example.com/z')
 
