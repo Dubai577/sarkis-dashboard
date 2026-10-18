@@ -31,7 +31,11 @@
 /** Due inside this many days counts as urgent. Late always does. */
 export const URGENT_WITHIN = 3
 
-export type Quadrant = 'do' | 'schedule' | 'pending' | 'drop'
+/** The matrix's own four. Pending is deliberately not one of them. */
+export type Quadrant = 'do' | 'schedule' | 'delegate' | 'drop'
+
+/** A quadrant, or the state of being out of your hands. */
+export type Lane = Quadrant | 'pending'
 
 export interface FocusInput {
   due_date?: string | null
@@ -58,30 +62,37 @@ export function isUrgent(item: FocusInput, today: string): boolean {
   return daysUntil(item.due_date, today) <= URGENT_WITHIN
 }
 
-/**
- * Pending is checked first, and that is a deliberate departure.
- *
- * The textbook third quadrant is "delegate" — advice about what you SHOULD
- * do with a task. That is useless once you have actually delegated it: the
- * thing is no longer yours to do, but it is still yours to chase, and if it
- * drops off the board you find out when someone asks why it never happened.
- *
- * So Pending is a state, not a judgement: anything sitting with another
- * person. It outranks urgency and importance because "who has this" answers a
- * different question from "how much does it matter", and the first question
- * decides what you can actually do about it today — follow up, nothing else.
- *
- * Urgent-but-not-important still lands here too, which is the textbook advice
- * arriving at the same place: these are the ones to hand over.
- */
+/** Which of the four corners a task you still hold belongs in. */
 export function quadrantOf(item: FocusInput, today: string): Quadrant {
-  if (item.waiting_on) return 'pending'
   const important = item.important === true
   const urgent = isUrgent(item, today)
   if (important && urgent) return 'do'
   if (important) return 'schedule'
-  if (urgent) return 'pending'
+  if (urgent) return 'delegate'
   return 'drop'
+}
+
+/**
+ * Pending is not a quadrant, and that distinction matters.
+ *
+ * Quadrant 3 is "urgent, not important" — the handout's examples are emails
+ * and phone calls, an unexpected interruption from work, a favour for
+ * someone. Things pulling at your attention right now that will not matter
+ * next week. Its advice is to avoid them or give them away.
+ *
+ * Pending is what happens AFTER you give one away, and it can start life in
+ * any of the four: a Q1 deadline handed to a teammate is still a Q1 deadline.
+ * The matrix sorts work by how much it deserves from you; Pending answers a
+ * different question — who has it — and the only move left to you is to
+ * chase. So it sits beside the four rather than inside one.
+ *
+ * Work with someone else is listed only here. Leaving it in its quadrant
+ * would put a task you cannot act on into a list of tasks to act on.
+ */
+export const isPending = (item: FocusInput) => !!item.waiting_on
+
+export function laneOf(item: FocusInput, today: string): Lane {
+  return isPending(item) ? 'pending' : quadrantOf(item, today)
 }
 
 export const QUADRANTS: {
@@ -107,9 +118,9 @@ export const QUADRANTS: {
     tone: '--theirs',
   },
   {
-    key: 'pending', title: 'Pending', verb: 'Chase it',
-    axes: 'With someone else',
-    blurb: 'Handed over, and still yours to chase. Also where urgent-but-minor belongs — those are the ones to give away.',
+    key: 'delegate', title: 'Hand off or skip', verb: 'Give it away',
+    axes: 'Urgent, not important',
+    blurb: 'Pulling at you now, but it will not matter next week — a message to answer, a favour, an interruption. Give it to someone or let it go.',
     tone: '--mine',
   },
   {
@@ -126,6 +137,14 @@ export const QUADRANTS: {
  * Thresholds rather than a formula: six things is a hard day, a dozen is not
  * a day at all. Saying so is more use than a number on its own.
  */
+/** Not a quadrant, so it carries its own description. */
+export const PENDING = {
+  title: 'Pending',
+  verb: 'Follow up',
+  blurb: 'Already with someone else. Not yours to do, still yours to chase — which is why it is kept here rather than dropped off the board.',
+  tone: '--theirs',
+}
+
 export function readOnDo(doCount: number, scheduleCount: number): string | null {
   if (doCount === 0) return null
   if (doCount <= 3) return null

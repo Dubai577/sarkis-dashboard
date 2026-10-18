@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PencilIcon } from '@/components/ui/Icon'
 import { mediumLabel, today as todayIso } from '@/lib/dates'
-import { QUADRANTS, quadrantOf, readOnDo, URGENT_WITHIN, type Quadrant } from '@/lib/focus'
+import {
+  PENDING, QUADRANTS, isPending, laneOf, readOnDo, URGENT_WITHIN, type Lane,
+} from '@/lib/focus'
 
 /**
  * The time matrix, as a working surface rather than a diagram.
@@ -35,7 +37,7 @@ export function Focus() {
   const [rows, setRows] = useState<Row[]>([])
   const [people, setPeople] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<Quadrant>('do')
+  const [tab, setTab] = useState<Lane>('do')
   const [busy, setBusy] = useState<string | null>(null)
   const [picking, setPicking] = useState<string | null>(null)
   const now = todayIso()
@@ -61,11 +63,12 @@ export function Focus() {
   }, [rows])
 
   const buckets = useMemo(() => {
-    const out: Record<Quadrant, Row[]> = { do: [], schedule: [], pending: [], drop: [] }
-    for (const r of leaves) out[quadrantOf(r, now)].push(r)
+    const out: Record<Lane, Row[]> =
+      { do: [], schedule: [], delegate: [], drop: [], pending: [] }
+    for (const r of leaves) out[laneOf(r, now)].push(r)
     const order = (a: Row, b: Row) =>
       (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999') || a.title.localeCompare(b.title)
-    for (const k of Object.keys(out) as Quadrant[]) out[k].sort(order)
+    for (const k of Object.keys(out) as Lane[]) out[k].sort(order)
     return out
   }, [leaves, now])
 
@@ -111,7 +114,7 @@ export function Focus() {
 
   if (loading) return <p className="p-4 text-[12px] text-ink-3">Loading…</p>
 
-  const meta = QUADRANTS.find(q => q.key === tab)!
+  const meta = tab === 'pending' ? PENDING : QUADRANTS.find(q => q.key === tab)!
   const list = buckets[tab]
   const note = readOnDo(buckets.do.length, buckets.schedule.length)
 
@@ -123,7 +126,27 @@ export function Focus() {
         never out of date. Importance is the one thing only you can say.
       </p>
 
-      {/* The four boxes, as the actual navigation. */}
+      {/*
+        Pending sits above the grid rather than in it. The matrix sorts work
+        by what it deserves from you; this answers who has it, which is a
+        different question with a different answer — follow up.
+      */}
+      <button
+        onClick={() => setTab('pending')}
+        className={`mb-1.5 flex w-full items-baseline gap-2 rounded-xl border p-2.5 text-left shadow-card ${
+          tab === 'pending' ? 'border-mine bg-mine-soft' : 'border-line/50 bg-surface hover:border-line-2'
+        }`}
+      >
+        <span className="h-3 w-[3px] shrink-0 self-center rounded-full"
+              style={{ background: `var(${PENDING.tone})` }} />
+        <span className="text-[12px] font-semibold">{PENDING.title}</span>
+        <span className="text-[10px] text-ink-3">with someone else</span>
+        <span className="ml-auto text-[18px] font-semibold leading-none tnum">
+          {buckets.pending.length}
+        </span>
+      </button>
+
+      {/* The matrix itself: four corners, and only four. */}
       <div className="mb-3 grid grid-cols-2 gap-1.5">
         {QUADRANTS.map(q => {
           const n = buckets[q.key].length
@@ -168,7 +191,9 @@ export function Focus() {
             ? 'Nothing urgent and important. That is the goal, not a gap.'
             : tab === 'pending'
               ? 'Nothing sitting with anyone else.'
-              : 'Empty.'}
+              : tab === 'delegate'
+                ? 'Nothing pulling at you that does not matter.'
+                : 'Empty.'}
         </p>
       ) : (
         <div className="rounded-xl border border-line/50 bg-surface shadow-card">
@@ -234,7 +259,7 @@ export function Focus() {
                   )
                 ) : null}
 
-                {(tab === 'pending' || tab === 'drop') && (
+                {(tab === 'pending' || tab === 'delegate' || tab === 'drop') && (
                   <select
                     value={r.waiting_on ?? ''}
                     onChange={e => patch(r.id, {
@@ -307,6 +332,26 @@ export function Focus() {
                 </td>
               </tr>
             ))}
+          </tbody>
+        </table>
+
+        <table className="mt-2 w-full border-collapse border-t border-line/60">
+          <tbody>
+            <tr className="align-top">
+              <td className="py-1.5 pr-2 whitespace-nowrap">
+                <span className="inline-flex items-baseline gap-1.5">
+                  <span className="h-3 w-[3px] shrink-0 translate-y-[2px] rounded-full"
+                        style={{ background: `var(${PENDING.tone})` }} />
+                  <span className="text-[12px] font-semibold">{PENDING.title}</span>
+                </span>
+              </td>
+              <td className="py-1.5 pr-2 text-[11px] leading-snug text-ink-2">
+                <span className="text-ink-3">Not a quadrant.</span> {PENDING.blurb}
+              </td>
+              <td className="py-1.5 whitespace-nowrap text-right text-[10.5px] text-mine">
+                {PENDING.verb}
+              </td>
+            </tr>
           </tbody>
         </table>
 
