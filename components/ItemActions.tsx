@@ -234,8 +234,14 @@ export function ItemActions({
         */}
         <section>
           <span className="mb-1.5 block text-[10px] uppercase tracking-wider text-ink-3">
-            Pending — with someone else
+            Pending — who has it
           </span>
+          {live?.waiting_on && (
+            <p className="mb-1.5 rounded-md bg-theirs-soft px-2 py-1 text-[11px] text-theirs">
+              With {people.find(p => p.id === live.waiting_on)?.name ?? 'someone'}. It is out of
+              your Today and your Late count until it comes back.
+            </p>
+          )}
           <select
             disabled={busy}
             value={live?.waiting_on ?? ''}

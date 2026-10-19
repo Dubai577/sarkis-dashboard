@@ -1473,6 +1473,7 @@ function DashboardView() {
       {drillRoot && (
         <Drill
           tree={data.tree ?? []}
+          people={data.people ?? []}
           rootId={drillRoot}
           onClose={() => setDrillRoot(null)}
           onChanged={load}

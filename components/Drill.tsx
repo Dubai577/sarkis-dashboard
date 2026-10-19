@@ -86,11 +86,14 @@ export const isGroup = (n: TreeNode): boolean => n.isGroup === true || n.childCo
 
 export function Drill({
   tree,
+  people = [],
   rootId,
   onClose,
   onChanged,
 }: {
   tree: TreeNode[]
+  /** Passed through to the item sheet so Pending can name who has it. */
+  people?: { id: string; name: string }[]
   rootId: string
   onClose: () => void
   onChanged: () => void
@@ -282,6 +285,7 @@ export function Drill({
       <ItemActions
         item={actionTarget}
         tree={tree}
+        people={people}
         open={!!actionTarget}
         onClose={() => setActionTarget(null)}
         onDone={onChanged}
