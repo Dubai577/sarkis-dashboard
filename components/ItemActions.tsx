@@ -36,16 +36,20 @@ export interface ActionTarget {
 export function ItemActions({
   item,
   tree,
+  people = [],
   open,
   onClose,
   onDone,
 }: {
   item: ActionTarget | null
   tree: TreeNode[]
+  /** For marking something pending with the person who has it. */
+  people?: { id: string; name: string }[]
   open: boolean
   onClose: () => void
   onDone: () => void
 }) {
+  const [newPerson, setNewPerson] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
@@ -217,6 +221,58 @@ export function ItemActions({
                 : shape === 'sub'
                   ? `A department under ${byId.get(current.parent_id ?? '')?.title ?? '— pick one below'}. It can hold its own tasks.`
                   : `Under ${byId.get(current.parent_id ?? '')?.title ?? '— pick one below'}. Pick a department below and it is a task under a sub-project.`}
+          </p>
+        </section>
+
+        {/*
+          ── pending ──
+
+          Naming who has it is what makes this different from "not done yet".
+          The item stays under its own project — moving it somewhere called
+          Pending would make that project lie about what is left in it, and
+          leave you re-filing by hand when the work comes back.
+        */}
+        <section>
+          <span className="mb-1.5 block text-[10px] uppercase tracking-wider text-ink-3">
+            Pending — with someone else
+          </span>
+          <select
+            disabled={busy}
+            value={live?.waiting_on ?? ''}
+            onChange={e => patch({
+              waiting_on: e.target.value || null,
+              waiting_since: e.target.value ? todayIso() : null,
+            })}
+            className={inputClass}
+          >
+            <option value="">No one — it is on me</option>
+            {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <div className="mt-1.5 flex gap-1.5">
+            <input
+              value={newPerson}
+              onChange={e => setNewPerson(e.target.value)}
+              onKeyDown={async e => {
+                if (e.key !== 'Enter' || !newPerson.trim()) return
+                const res = await fetch('/api/people', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ name: newPerson.trim() }),
+                })
+                const body = await res.json().catch(() => ({}))
+                if (body?.person?.id) {
+                  setNewPerson('')
+                  patch({ waiting_on: body.person.id, waiting_since: todayIso() })
+                }
+              }}
+              placeholder="or add someone new, Enter to save"
+              className={`${inputClass} text-[12px]`}
+            />
+          </div>
+          <p className="mt-1 text-[10px] leading-snug text-ink-3">
+            {live?.waiting_on
+              ? 'It stays in this project and also shows in Pending, until they finish it or you take it back.'
+              : 'Use this once you have handed the work over, so it stops counting as yours to do.'}
           </p>
         </section>
 

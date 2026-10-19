@@ -757,6 +757,24 @@ function DashboardView() {
     return [...roots].sort()
   })()
 
+  /**
+   * Everything sitting with someone else, gathered from wherever it lives.
+   *
+   * A view, not a project. Moving these under one parent would make their own
+   * project lie about what is left in it, and leave you re-filing by hand the
+   * moment the work came back. The row stays where it belongs and shows up
+   * here too.
+   */
+  const pending = (data.tree ?? [])
+    .filter(n => n.parent_id && n.isGroup !== true && n.waiting_on)
+    .filter(n => n.progress !== 'done')
+    .map(n => {
+      const nodes = data.tree ?? []
+      const parent = n.parent_id ? nodes.find(x => x.id === n.parent_id) : undefined
+      return { node: n, who: n.waiting ?? 'someone', where: parent?.title ?? '', root: rootOf(n, nodes) }
+    })
+    .sort((a, b) => a.who.localeCompare(b.who) || a.node.title.localeCompare(b.node.title))
+
   const weekByDay = byDay(laterThisWeek, itemsThisWeek)
   const nextWeekByDay = byDay(nextWeekTodos, itemsNextWeek)
 
@@ -813,6 +831,48 @@ function DashboardView() {
           </>
         )}
       </div>
+
+      {pending.length > 0 && (
+        <div className="mb-3">
+          <TimeBlock
+            title="Pending"
+            when="with someone else"
+            count={pending.length}
+            href="/focus"
+          >
+            {pending.map(({ node, who, where, root }) => (
+              <div key={node.id}
+                   className="flex items-start gap-1.5 border-b border-line/60 py-1 last:border-b-0">
+                <span className="mt-[3px] shrink-0 rounded-sm bg-theirs-soft px-1 text-[8.5px]
+                                 uppercase tracking-wider text-theirs">
+                  {who.split(' ')[0]}
+                </span>
+                <button
+                  onClick={() => setActionTarget({
+                    id: node.id, title: node.title, parent_id: node.parent_id,
+                    planned_date: node.planned_date, due_date: node.due_date,
+                    status: node.status, progress: node.progress ?? null,
+                    important: node.important === true,
+                  })}
+                  className="min-w-0 flex-1 break-words text-left text-[12.5px] leading-snug"
+                >
+                  {node.title}
+                </button>
+                {node.due_date && (
+                  <span className={`mt-[3px] shrink-0 text-[10px] tnum ${
+                    node.due_date < data.date ? 'text-dropped' : 'text-ink-3'
+                  }`}>
+                    due {mediumLabel(node.due_date)}
+                  </span>
+                )}
+                <span className="mt-[3px] max-w-[32%] shrink truncate text-right text-[10px] text-ink-3">
+                  {where || root}
+                </span>
+              </div>
+            ))}
+          </TimeBlock>
+        </div>
+      )}
 
       <div className="mb-3 grid gap-3 sm:grid-cols-2">
         <TimeBlock
@@ -1404,6 +1464,7 @@ function DashboardView() {
       <ItemActions
         item={actionTarget}
         tree={data.tree ?? []}
+        people={data.people ?? []}
         open={!!actionTarget}
         onClose={() => setActionTarget(null)}
         onDone={load}
@@ -1949,6 +2010,12 @@ function Chip({
       {child.progress === 'in_progress' && (
         <span className="shrink-0 rounded-full bg-mine px-1 text-[8px] uppercase tracking-wider text-bg">
           wip
+        </span>
+      )}
+      {child.waiting && (
+        <span className="shrink-0 rounded-full bg-theirs-soft px-1 text-[8px] uppercase tracking-wider text-theirs"
+              title={`Pending with ${child.waiting}`}>
+          pending
         </span>
       )}
 
