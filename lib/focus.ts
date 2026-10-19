@@ -118,18 +118,33 @@ export const QUADRANTS: {
     tone: '--theirs',
   },
   {
-    key: 'delegate', title: 'Hand off or skip', verb: 'Give it away',
+    key: 'delegate', title: 'Clear it', verb: 'Get it off the list',
     axes: 'Urgent, not important',
-    blurb: 'Pulling at you now, but it will not matter next week — a message to answer, a favour, an interruption. Give it to someone or let it go.',
+    blurb: 'A clock, but nothing of yours riding on it — a favour with a date, a reply someone needs today. Real work you took on. Do it fast and do not let it expand.',
     tone: '--mine',
   },
   {
-    key: 'drop', title: 'Not now', verb: 'Archive',
+    key: 'drop', title: 'Anytime', verb: 'When there is a gap',
     axes: 'Neither',
-    blurb: 'No deadline, not marked important. Most captured things live here, and that is fine until you pretend otherwise.',
+    blurb: 'Nothing forcing it and nothing riding on it. Still worth doing — it just is never the next thing. Batch these into an hour rather than carrying them one by one.',
     tone: '--border-2',
   },
 ]
+
+/**
+ * Why these two are not the handout's "delegate or avoid" and "remove".
+ *
+ * That version assumes an unfiltered list: a dump that still contains
+ * scrolling, meetings nobody needed, and things to simply stop doing. The
+ * filtering here happens before anything is typed in — if it reaches the
+ * board, it is already something that has to happen.
+ *
+ * So quadrant three is not "give it away", because a favour you agreed to is
+ * yours; it is "clear it", because the risk with a low-stakes deadline is
+ * letting it eat an afternoon. And quadrant four is not a bin, it is the
+ * anytime pile — real work with no clock, which is exactly the work that
+ * should wait and exactly the work that quietly fills a day when it does not.
+ */
 
 /**
  * What the Do pile means, said plainly.

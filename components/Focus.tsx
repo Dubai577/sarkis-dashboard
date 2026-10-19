@@ -196,10 +196,10 @@ export function Focus() {
               <table className="mt-1 w-full border-collapse">
                 <tbody className="align-top">
                   {([
-                    ['Do', 'Assignment due tonight · exam tomorrow · a real emergency'],
-                    ['Schedule', 'A project due in three months · reviewing notes · exercise · setting goals with someone'],
-                    ['Hand off or skip', 'Answering messages · a favour someone asked for · an event announced today · an interruption from work'],
-                    ['Not now', 'Scrolling · a meeting nobody needed · two hours on the phone · another episode'],
+                    ['Do', 'Assignment due tonight · exam tomorrow · something you promised for today'],
+                    ['Schedule', 'A project due in three months · reviewing notes · exercise · planning the next term'],
+                    ['Clear it', 'A favour with a date on it · a reply someone needs today · booking a thing before it is gone'],
+                    ['Anytime', 'Tidying a folder · a small fix that bothers you · an errand with no deadline'],
                   ] as const).map(([k, v]) => (
                     <tr key={k} className="border-t border-line/50 first:border-t-0">
                       <td className="w-[108px] py-1 pr-2 text-[11px] font-medium text-ink">{k}</td>
@@ -217,6 +217,16 @@ export function Focus() {
               urgent.”</span>{' '}Someone else&rsquo;s deadline arriving in your inbox is urgent to
               them; whether it is important to you is a separate question, and answering it is the
               whole exercise.
+            </p>
+
+            <p className="mt-2.5 text-[11px] leading-snug text-ink-2">
+              <span className="font-medium">Where this differs from the handout:</span> its
+              bottom-right box is for distractions to delete — scrolling, meetings nobody needed.
+              Nothing like that reaches here, because the filtering happens before anything gets
+              typed in. So that box is <span className="font-medium">Anytime</span>: real work with
+              no clock and nothing riding on it. The risk is not that you do these, it is that you
+              do them <span className="italic">first</span>, because they are the easiest things on
+              the list.
             </p>
 
             <p className="mt-2 text-[11px] leading-snug text-ink-3">
@@ -293,8 +303,10 @@ export function Focus() {
             : tab === 'pending'
               ? 'Nothing sitting with anyone else.'
               : tab === 'delegate'
-                ? 'Nothing pulling at you that does not matter.'
-                : 'Empty.'}
+                ? 'Nothing on someone else’s clock.'
+                : tab === 'drop'
+                  ? 'Nothing waiting for a gap.'
+                  : 'Empty.'}
         </p>
       ) : (
         <div className="rounded-xl border border-line/50 bg-surface shadow-card">
@@ -385,7 +397,7 @@ export function Focus() {
 
                 <button onClick={() => archive(r.id)} disabled={busy === r.id}
                         className="ml-auto rounded-full border border-line px-2 text-[10px] text-ink-3 hover:border-dropped hover:text-dropped">
-                  Drop it
+                  Archive
                 </button>
                 <a href={`/items/${r.id}`} title="Open" className="shrink-0 p-0.5 text-ink-3 hover:text-mine">
                   <PencilIcon size={11} />
