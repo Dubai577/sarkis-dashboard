@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { PossessionGlyph } from '@/components/ui/Possession'
 import { AddChild } from '@/components/InlineActions'
@@ -238,9 +237,23 @@ export function Drill({
                         <span className="ml-1 text-[9px] tnum text-ink-3">{n.childCount}</span>
                       </button>
                     ) : (
-                      <Link href={`/items/${n.id}`} className="clamp-1 min-w-0 flex-1 text-[12px]">
+                      /*
+                        Opens the editor here rather than navigating to the
+                        item's own page. Leaving the drill to change one field
+                        loses your place in it, and archiving from over there
+                        used to land you on another screen entirely.
+                      */
+                      <button
+                        onClick={() => setActionTarget({
+                          id: n.id, title: n.title, parent_id: n.parent_id,
+                          planned_date: n.planned_date, due_date: n.due_date,
+                          status: n.status, progress: n.progress ?? null,
+                          important: n.important === true,
+                        })}
+                        className="min-w-0 flex-1 break-words text-left text-[12px] leading-snug"
+                      >
                         {n.title}
-                      </Link>
+                      </button>
                     )}
 
                     {n.waiting && (

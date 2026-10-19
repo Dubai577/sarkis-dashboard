@@ -117,8 +117,17 @@ export default function ItemPage({ params }: { params: Promise<{ id: string }> }
 
   async function archive(target: string) {
     await fetch(`/api/items/${target}`, { method: 'DELETE' })
-    if (target === id) router.push('/projects')
-    else load()
+    if (target !== id) { load(); return }
+    /**
+     * Go back, not to a fixed page.
+     *
+     * This pushed /projects, so archiving an item you reached from inside a
+     * project dumped you somewhere else entirely and you had to walk back in.
+     * history.back returns you to whatever you were looking at; the push is
+     * only the fallback for a tab opened straight onto this URL.
+     */
+    if (typeof window !== 'undefined' && window.history.length > 1) router.back()
+    else router.push('/projects')
   }
 
   async function commitSplit() {
