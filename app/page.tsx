@@ -175,6 +175,8 @@ function DashboardView() {
    * is actually on the day, so an area with nothing today is not offered.
    */
   const [dayArea, setDayArea] = useState<string | null>(null)
+  /** The class or committee inside that project, once one is chosen. */
+  const [daySub, setDaySub] = useState<string | null>(null)
   /**
    * Is the late block expanded.
    *
@@ -675,19 +677,39 @@ function DashboardView() {
     name: string
     /** The top-level project it lives under; '' for a plain dated task. */
     root: string
+    /** The step directly under that top level — the class, the committee. */
+    sub: string
     /** Urgent 0, Soon 1, Whenever 2, unset 3 — so a plain sort puts urgent first. */
     pri: number
   }
 
   const PRI: Record<string, number> = { Urgent: 0, Soon: 1, Whenever: 2 }
-  const rootOf = (n: TreeNode | undefined, nodes: TreeNode[]): string => {
+
+  /**
+   * The whole line of ancestors, root first, ending in the row itself.
+   *
+   * Only the root was kept before, which is why narrowing offered VT and
+   * nothing under it: one chip standing for sixty assignments across seven
+   * classes. The useful handle is the step below — the class, the committee —
+   * so the path has to survive the walk rather than be collapsed during it.
+   */
+  const chainOf = (n: TreeNode | undefined, nodes: TreeNode[]): TreeNode[] => {
+    const chain: TreeNode[] = []
     let cur = n
     const guard = new Set<string>()
-    while (cur?.parent_id && !guard.has(cur.id)) {
+    while (cur && !guard.has(cur.id)) {
       guard.add(cur.id)
-      cur = nodes.find(x => x.id === cur!.parent_id)
+      chain.unshift(cur)
+      cur = cur.parent_id ? nodes.find(x => x.id === cur!.parent_id) : undefined
     }
-    return cur?.title ?? ''
+    return chain
+  }
+  const rootOf = (n: TreeNode | undefined, nodes: TreeNode[]): string =>
+    chainOf(n, nodes)[0]?.title ?? ''
+  /** Empty when the row hangs straight off the project: it is not in a class. */
+  const subOf = (n: TreeNode | undefined, nodes: TreeNode[]): string => {
+    const chain = chainOf(n, nodes)
+    return chain.length > 2 ? chain[1].title : ''
   }
 
   const toRows = (todos: Todo[], items: typeof itemsToday): DayRow[] => {
@@ -700,7 +722,7 @@ function DashboardView() {
         // A blank deadline sorts last, never first: no date is not "urgent".
         due: src?.due_date ?? '9999-12-31',
         cls: parent?.title ?? '\uffff', name: t.title,
-        root: rootOf(src, nodes),
+        root: rootOf(src, nodes), sub: subOf(src, nodes),
         pri: PRI[src?.priority ?? ''] ?? 3,
       }
     })
@@ -710,11 +732,12 @@ function DashboardView() {
         key: `i-${it.node.id}`, item: it, done: it.node.progress === 'done',
         due: it.node.due_date ?? '9999-12-31',
         cls: parent?.title ?? '\uffff', name: it.node.title,
-        root: rootOf(it.node, nodes),
+        root: rootOf(it.node, nodes), sub: subOf(it.node, nodes),
         pri: PRI[it.node.priority ?? ''] ?? 3,
       })
     }
-    const shown = dayArea ? rows.filter(r => r.root === dayArea) : rows
+    const shown = rows.filter(r =>
+      (!dayArea || r.root === dayArea) && (!daySub || r.sub === daySub))
     const cmp = (a: DayRow, b: DayRow): number => {
       if (daySort === 'priority') return a.pri - b.pri
       const by = daySort === 'due' ? 'due' : daySort === 'class' ? 'cls' : 'name'
@@ -746,16 +769,38 @@ function DashboardView() {
     for (const i of items) bucket(i.when).items.push(i)
     return [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }
-  const areasOnShow = (() => {
+  /**
+   * What can be narrowed to, taken from the work actually on screen.
+   *
+   * Both levels come out of one walk, so a chip can never offer a class with
+   * nothing in it this week — the list is the work, not the whole tree.
+   */
+  const scope = (() => {
     const nodes = data.tree ?? []
     const roots = new Set<string>()
-    const add = (n: TreeNode | undefined) => { const r = rootOf(n, nodes); if (r) roots.add(r) }
+    const subs = new Map<string, Set<string>>()
+    const add = (n: TreeNode | undefined) => {
+      const chain = chainOf(n, nodes)
+      const root = chain[0]?.title
+      if (!root) return
+      roots.add(root)
+      if (chain.length > 2) {
+        const seen = subs.get(root) ?? new Set<string>()
+        seen.add(chain[1].title)
+        subs.set(root, seen)
+      }
+    }
     for (const t of [...data.todos, ...overdueTodos, ...laterThisWeek, ...nextWeekTodos]) {
       add(t.source_item_id ? nodes.find(n => n.id === t.source_item_id) : undefined)
     }
     for (const i of [...itemsToday, ...itemsThisWeek, ...itemsNextWeek]) add(i.node)
-    return [...roots].sort()
+    return {
+      roots: [...roots].sort(),
+      under: (root: string | null) => (root ? [...(subs.get(root) ?? [])].sort() : []),
+    }
   })()
+  const areasOnShow = scope.roots
+  const subsOnShow = scope.under(dayArea)
 
   /**
    * Everything sitting with someone else, gathered from wherever it lives.
@@ -810,7 +855,7 @@ function DashboardView() {
           <>
             <span className="ml-2 text-[10px] uppercase tracking-wider text-ink-3">Show</span>
             <button
-              onClick={() => setDayArea(null)}
+              onClick={() => { setDayArea(null); setDaySub(null) }}
               className={`rounded-full border px-2 py-px text-[10.5px] ${
                 dayArea === null ? 'border-mine bg-mine-soft text-mine' : 'border-line text-ink-2'
               }`}
@@ -820,7 +865,9 @@ function DashboardView() {
             {areasOnShow.map(a => (
               <button
                 key={a}
-                onClick={() => setDayArea(dayArea === a ? null : a)}
+                /* Changing project drops the class with it: Statics under Exec
+                   portal would filter everything to nothing. */
+                onClick={() => { setDayArea(dayArea === a ? null : a); setDaySub(null) }}
                 className={`rounded-full border px-2 py-px text-[10.5px] ${
                   dayArea === a ? 'border-mine bg-mine-soft text-mine' : 'border-line text-ink-2'
                 }`}
@@ -831,6 +878,40 @@ function DashboardView() {
           </>
         )}
       </div>
+
+      {/*
+        ── the second level ──
+
+        Only once a project is picked, and only when it actually has more than
+        one thing under it. A permanent row of forty class names would cost
+        more to read than the list it narrows.
+      */}
+      {dayArea && subsOnShow.length > 1 && (
+        <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 pl-0.5">
+          <span className="text-[10px] uppercase tracking-wider text-ink-3">
+            In {dayArea}
+          </span>
+          <button
+            onClick={() => setDaySub(null)}
+            className={`rounded-full border px-2 py-px text-[10.5px] ${
+              daySub === null ? 'border-mine bg-mine-soft text-mine' : 'border-line text-ink-2'
+            }`}
+          >
+            All
+          </button>
+          {subsOnShow.map(sub => (
+            <button
+              key={sub}
+              onClick={() => setDaySub(daySub === sub ? null : sub)}
+              className={`max-w-[48%] truncate rounded-full border px-2 py-px text-[10.5px] ${
+                daySub === sub ? 'border-mine bg-mine-soft text-mine' : 'border-line text-ink-2'
+              }`}
+            >
+              {sub}
+            </button>
+          ))}
+        </div>
+      )}
 
       {pending.length > 0 && (
         <div className="mb-3">
