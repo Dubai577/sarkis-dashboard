@@ -109,6 +109,15 @@ export interface Item {
    * the due date and updates itself; this is the judgment only you can make.
    */
   important?: boolean | null
+  /**
+   * Hand position in the Someday bucket, null when unplaced.
+   *
+   * Not sort_order: that ranks an item among its own siblings, and the bucket
+   * draws from a dozen projects at once, so a position written there would
+   * reshuffle those projects and still leave ties. Optional because migration
+   * 023 is applied by hand.
+   */
+  someday_order?: number | null
 
   waiting_on: Uuid | null
   waiting_since: IsoDate | null

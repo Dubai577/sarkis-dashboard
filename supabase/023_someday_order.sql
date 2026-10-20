@@ -1,0 +1,11 @@
+-- 023: hand ordering for the Someday bucket.
+--
+-- Everything in Someday is already marked important, so importance cannot rank
+-- it — the ranking is the order you put them in. sort_order is not usable for
+-- this: it orders an item among its siblings inside its own project, and the
+-- bucket draws from a dozen different projects, so writing a bucket position
+-- into it would reshuffle those projects and still leave ties.
+--
+-- Null means unplaced, and unplaced sorts last: a new arrival lands at the
+-- bottom rather than silently jumping the queue.
+alter table items add column if not exists someday_order integer;

@@ -8,6 +8,7 @@ const WRITABLE = [
   'parent_id', 'title', 'notes', 'category_id', 'priority', 'status',
   'planned_date', 'due_date', 'start_time', 'end_time', 'sort_order',
   'board', 'waiting_on', 'waiting_since', 'nudge_after', 'link', 'is_group', 'progress', 'planned_auto', 'follow_up_on', 'important',
+  'someday_order',
 ] as const
 
 /**

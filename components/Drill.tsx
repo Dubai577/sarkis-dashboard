@@ -49,6 +49,8 @@ export interface TreeNode {
   follow_up_on?: string | null
   updated_at?: string | null
   important?: boolean | null
+  /** Hand position in the Someday bucket; null is unplaced and sorts last. */
+  someday_order?: number | null
   waiting_on?: string | null
 }
 

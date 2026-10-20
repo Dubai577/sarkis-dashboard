@@ -35,7 +35,7 @@ export interface ItemView extends Item {
  */
 const PENDING_COLUMNS =
   ['is_group', 'link', 'progress', 'planned_auto', 'follow_up_on', 'important',
-   'external_uid', 'external_source', 'external_synced_at'] as const
+   'someday_order', 'external_uid', 'external_source', 'external_synced_at'] as const
 
 /**
  * PostgREST rejects an unknown column from its own schema cache with PGRST204

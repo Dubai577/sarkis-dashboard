@@ -234,6 +234,30 @@ function DashboardView() {
     load()
   }, [])
 
+  /**
+   * Move one Someday row past its neighbour.
+   *
+   * Renumbers the whole visible bucket rather than writing the moved row
+   * alone: every row starts unplaced, so a single write would put one item in
+   * front and leave eleven tied. After the first move each one is a clean swap
+   * and only two rows are written.
+   */
+  const reorderSomeday = useCallback(async (list: TreeNode[], id: string, delta: number) => {
+    const order = [...list]
+    const from = order.findIndex(n => n.id === id)
+    const to = from + delta
+    if (from < 0 || to < 0 || to >= order.length) return
+    const [moved] = order.splice(from, 1)
+    order.splice(to, 0, moved)
+    await Promise.all(order.map((n, i) =>
+      n.someday_order === i ? null : fetch(`/api/items/${n.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ someday_order: i }),
+      })))
+    load()
+  }, [])
+
   const load = useCallback(async () => {
     try {
       const res = await fetch('/api/dashboard')
@@ -872,7 +896,18 @@ function DashboardView() {
       const parent = n.parent_id ? nodes.find(x => x.id === n.parent_id) : undefined
       return { node: n, where: parent?.title ?? '', root: rootOf(n, nodes) }
     })
-    .sort((a, b) => a.root.localeCompare(b.root) || a.node.title.localeCompare(b.node.title))
+    /**
+     * Your order first, then the unplaced.
+     *
+     * Everything here is important, so importance cannot rank it, and no date
+     * exists to do it either. The order you put them in IS the priority, and
+     * anything new lands at the bottom rather than jumping the queue on the
+     * strength of its project name.
+     */
+    .sort((a, b) =>
+      (a.node.someday_order ?? 1e9) - (b.node.someday_order ?? 1e9)
+      || a.root.localeCompare(b.root)
+      || a.node.title.localeCompare(b.node.title))
 
   const weekByDay = byDay(laterThisWeek, itemsThisWeek)
   const nextWeekByDay = byDay(nextWeekTodos, itemsNextWeek)
@@ -1201,7 +1236,7 @@ function DashboardView() {
             count={someday.length}
             href="/focus"
           >
-            {someday.map(({ node, where, root }) => {
+            {someday.map(({ node, where, root }, i) => {
               const edit = () => setActionTarget({
                 id: node.id, title: node.title, parent_id: node.parent_id,
                 planned_date: node.planned_date, due_date: node.due_date,
@@ -1229,12 +1264,35 @@ function DashboardView() {
                   >
                     <PencilIcon size={11} />
                   </button>
+                  {/* Rank by hand: in a list where everything matters, the
+                      order is the only thing left that can say which first. */}
+                  <span className="mt-[1px] flex shrink-0">
+                    <button
+                      onClick={() => reorderSomeday(someday.map(s => s.node), node.id, -1)}
+                      disabled={i === 0}
+                      aria-label={`Move ${node.title} up`}
+                      title="Higher"
+                      className="rounded-md p-1 text-ink-3 hover:bg-band-nest hover:text-mine disabled:opacity-25"
+                    >
+                      <ChevronUpIcon size={11} />
+                    </button>
+                    <button
+                      onClick={() => reorderSomeday(someday.map(s => s.node), node.id, 1)}
+                      disabled={i === someday.length - 1}
+                      aria-label={`Move ${node.title} down`}
+                      title="Lower"
+                      className="rounded-md p-1 text-ink-3 hover:bg-band-nest hover:text-mine disabled:opacity-25"
+                    >
+                      <ChevronDownIcon size={11} />
+                    </button>
+                  </span>
                 </div>
               )
             })}
             <p className="pt-1 text-[10px] leading-snug text-ink-3">
-              Tap a row to give it a day, a deadline or a different project. Clearing the star
-              takes it out of here.
+              Top of the list is what you do first — everything here is important, so the order
+              is the priority. Tap a row to give it a day, a deadline or a different project;
+              clearing the star takes it out of here.
             </p>
           </TimeBlock>
         </div>
