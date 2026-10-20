@@ -372,6 +372,27 @@ export function ItemActions({
               ),
             )}
           </div>
+          {/*
+            Someday: important, no date, off the day.
+
+            The matrix's second quadrant needs somewhere to live. Without this,
+            a thing that matters with no deadline has only two homes — a day it
+            does not belong on, where it rolls forward and reads as late, or no
+            date at all, where it is indistinguishable from the hundred things
+            nobody is waiting on. One tap does both halves: clears the plan and
+            marks it important, which is what puts it in the bucket.
+          */}
+          <button
+            disabled={busy}
+            onClick={() => patch({ planned_date: null, planned_auto: false, important: true, status: null })}
+            className={`mb-1.5 w-full rounded-md border py-1.5 text-[11px] ${
+              current.important && !current.planned_date
+                ? 'border-mine bg-mine-soft text-mine'
+                : 'border-line text-ink-2'
+            }`}
+          >
+            ★ Someday — matters, no date
+          </button>
           <label className="block">
             <span className="mb-1 block text-[10px] text-ink-3">Or any other day</span>
             <input

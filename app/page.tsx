@@ -852,6 +852,28 @@ function DashboardView() {
     })
     .sort((a, b) => a.who.localeCompare(b.who) || a.node.title.localeCompare(b.node.title))
 
+  /**
+   * Someday: it matters, and nothing is forcing it.
+   *
+   * The second quadrant of the matrix, as a list you can actually empty into.
+   * A starred row with no deadline and no plan is not neglected — it is a
+   * decision you already made, which is why it shows here and not on a day
+   * where it would roll forward and wear a late badge for a hundred days.
+   *
+   * The star is the whole filter. Dateless alone would be the No date lens and
+   * a hundred rows deep; what makes this a bucket is that you put it here.
+   */
+  const someday = (data.tree ?? [])
+    .filter(n => n.parent_id && n.isGroup !== true && !n.foreign)
+    .filter(n => n.important === true && n.progress !== 'done' && !n.waiting_on)
+    .filter(n => !n.due_date && !n.planned_date)
+    .map(n => {
+      const nodes = data.tree ?? []
+      const parent = n.parent_id ? nodes.find(x => x.id === n.parent_id) : undefined
+      return { node: n, where: parent?.title ?? '', root: rootOf(n, nodes) }
+    })
+    .sort((a, b) => a.root.localeCompare(b.root) || a.node.title.localeCompare(b.node.title))
+
   const weekByDay = byDay(laterThisWeek, itemsThisWeek)
   const nextWeekByDay = byDay(nextWeekTodos, itemsNextWeek)
 
@@ -978,6 +1000,38 @@ function DashboardView() {
                     due {mediumLabel(node.due_date)}
                   </span>
                 )}
+                <span className="mt-[3px] max-w-[32%] shrink truncate text-right text-[10px] text-ink-3">
+                  {where || root}
+                </span>
+              </div>
+            ))}
+          </TimeBlock>
+        </div>
+      )}
+
+      {someday.length > 0 && (
+        <div className="mb-3">
+          <TimeBlock
+            title="Someday"
+            when="matters, no date"
+            count={someday.length}
+            href="/focus"
+          >
+            {someday.map(({ node, where, root }) => (
+              <div key={node.id}
+                   className="flex items-start gap-1.5 border-b border-line/60 py-1 last:border-b-0">
+                <span className="mt-[3px] shrink-0 text-[10px] text-mine">★</span>
+                <button
+                  onClick={() => setActionTarget({
+                    id: node.id, title: node.title, parent_id: node.parent_id,
+                    planned_date: node.planned_date, due_date: node.due_date,
+                    status: node.status, progress: node.progress ?? null,
+                    important: node.important === true,
+                  })}
+                  className="min-w-0 flex-1 break-words text-left text-[12.5px] leading-snug"
+                >
+                  {node.title}
+                </button>
                 <span className="mt-[3px] max-w-[32%] shrink truncate text-right text-[10px] text-ink-3">
                   {where || root}
                 </span>
