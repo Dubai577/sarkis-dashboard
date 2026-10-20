@@ -69,7 +69,7 @@ interface ExecUpdate {
 }
 
 /** Club names for the comments panel, keyed by portal source. */
-const PORTAL_NAMES: Record<string, string> = { 'exec-portal': 'OCCM', h4hvt: 'H4HVT' }
+const PORTAL_NAMES: Record<string, string> = { 'exec-portal': 'OCCM', h4hvt: 'H4H' }
 
 interface Payload {
   date: string

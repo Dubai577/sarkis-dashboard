@@ -41,7 +41,7 @@ export interface ExecPortalConfig {
  */
 export const PORTALS = [
   { source: 'exec-portal', title: 'OCCM Exec', urlEnv: 'EXEC_PORTAL_FEED_URL', tokenEnv: 'EXEC_PORTAL_TOKEN' },
-  { source: 'h4hvt',       title: 'H4HVT',     urlEnv: 'H4HVT_FEED_URL',       tokenEnv: 'H4HVT_TOKEN' },
+  { source: 'h4hvt',       title: 'Hearts for Humanity', urlEnv: 'H4HVT_FEED_URL', tokenEnv: 'H4HVT_TOKEN' },
 ] as const
 
 export const PORTAL_SOURCES = new Set<string>(PORTALS.map(p => p.source))
