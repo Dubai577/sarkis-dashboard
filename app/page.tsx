@@ -479,7 +479,6 @@ function DashboardView() {
   const recentExec = (data.execPortal?.updates ?? [])
     .filter(u => Date.parse(u.created_at) >= twoWeeksAgo)
 
-  const todayOpen = data.todos.filter(t => !t.is_complete)
   /**
    * Ticking something off made it vanish, which reads as "did that delete it?"
    * and takes away the only reward the list gives you — seeing what you got
@@ -507,11 +506,41 @@ function DashboardView() {
    * it made the count argue with the list. It goes to On today instead, which
    * is where "what I got through" belongs.
    */
-  const overdueTodos = [...(data.overdueTodos ?? []), ...data.todos]
+  /**
+   * Late means the DEADLINE is blown — not that a plan slipped.
+   *
+   * Planning something for Tuesday and not getting to it says nothing about
+   * whether anyone is owed it yet. A task planned last week and due in
+   * November was being filed under Late next to a missed exam, which is how a
+   * Late block reaches thirty rows and stops being read at all.
+   *
+   * So everything behind splits two ways: the deadline has passed, which is
+   * Late; or it has not, which is just today's work carried forward. A thing
+   * due TODAY is never late — today is the day you still have.
+   */
+  const dueOf = (t: Todo) =>
+    (t.source_item_id
+      ? (data.tree ?? []).find(n => n.id === t.source_item_id)?.due_date
+      : null) ?? null
+  const blown = (t: Todo) => {
+    const due = dueOf(t)
+    return !!due && due < data.date
+  }
+  const behind = [...(data.overdueTodos ?? []), ...data.todos]
     .filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
     .filter(t => meantFor(t) < data.date)
     .filter(t => !t.is_complete || justChecked.has(t.id))
     .sort((a, b) => meantFor(a).localeCompare(meantFor(b)))
+  const overdueTodos = behind.filter(blown)
+  /**
+   * Behind on the plan with nothing owed yet, so it belongs on today.
+   *
+   * Rollover walks a missed day forward and lands most of these on today
+   * already; the ones it could not reach would vanish entirely if they were
+   * taken out of Late without being put somewhere, so they are listed here
+   * explicitly rather than left to the rollover to have handled.
+   */
+  const carriedTodos = behind.filter(t => !blown(t))
 
   /** Late work finished today: shown under On today, struck through. */
   const lateDoneToday = [...(data.overdueTodos ?? []), ...data.todos]
@@ -522,7 +551,7 @@ function DashboardView() {
   const lateIds = new Set(overdueTodos.map(t => t.id))
 
   const settled = (t: Todo) => t.is_complete && !justChecked.has(t.id)
-  const todayAll = [...data.todos, ...lateDoneToday]
+  const todayAll = [...data.todos, ...carriedTodos, ...lateDoneToday]
     .filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
     .filter(t => !lateIds.has(t.id))
     .sort((a, b) =>
@@ -603,6 +632,9 @@ function DashboardView() {
     .filter(n => !mirrored.has(n.id) && !n.foreign)
     .filter(n => n.progress !== 'done')
     .filter(n => n.due_date && n.due_date < data.date)
+    // A deadline that passed but a plan still ahead of you is not late: you
+    // have already decided when it gets dealt with, and that day will show it.
+    .filter(n => !n.planned_date || n.planned_date < data.date)
     .map(n => ({ node: n, when: n.due_date!, kind: 'due' as const }))
     .sort((a, b) => a.when.localeCompare(b.when))
 
@@ -959,7 +991,7 @@ function DashboardView() {
         <TimeBlock
           title="Today"
           when={mediumLabel(data.date)}
-          count={todayOpen.length + overdueTodos.length + itemsToday.length}
+          count={todayAll.filter(t => !t.is_complete).length + overdueTodos.length + itemsToday.length}
           href={`/calendar?view=day&date=${data.date}`}
         >
           <AddToDay date={data.date} onAdd={addTodo} />
