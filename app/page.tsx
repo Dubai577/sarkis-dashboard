@@ -1009,38 +1009,6 @@ function DashboardView() {
         </div>
       )}
 
-      {someday.length > 0 && (
-        <div className="mb-3">
-          <TimeBlock
-            title="Someday"
-            when="matters, no date"
-            count={someday.length}
-            href="/focus"
-          >
-            {someday.map(({ node, where, root }) => (
-              <div key={node.id}
-                   className="flex items-start gap-1.5 border-b border-line/60 py-1 last:border-b-0">
-                <span className="mt-[3px] shrink-0 text-[10px] text-mine">★</span>
-                <button
-                  onClick={() => setActionTarget({
-                    id: node.id, title: node.title, parent_id: node.parent_id,
-                    planned_date: node.planned_date, due_date: node.due_date,
-                    status: node.status, progress: node.progress ?? null,
-                    important: node.important === true,
-                  })}
-                  className="min-w-0 flex-1 break-words text-left text-[12.5px] leading-snug"
-                >
-                  {node.title}
-                </button>
-                <span className="mt-[3px] max-w-[32%] shrink truncate text-right text-[10px] text-ink-3">
-                  {where || root}
-                </span>
-              </div>
-            ))}
-          </TimeBlock>
-        </div>
-      )}
-
       <div className="mb-3 grid gap-3 sm:grid-cols-2">
         <TimeBlock
           title="Today"
@@ -1215,6 +1183,62 @@ function DashboardView() {
           />
         </TimeBlock>
       </div>
+
+      {/*
+        Someday sits BELOW the day, not above it.
+
+        Over Today it read as one more pile competing for the morning. Under
+        it, it is what you reach for when the day has room — which is the only
+        way a parking lot stays useful rather than becoming where things go to
+        die. Every row opens the full sheet: a day, a deadline, another
+        project, or unstar it and it leaves.
+      */}
+      {someday.length > 0 && (
+        <div className="mb-3">
+          <TimeBlock
+            title="Someday"
+            when="matters, no date"
+            count={someday.length}
+            href="/focus"
+          >
+            {someday.map(({ node, where, root }) => {
+              const edit = () => setActionTarget({
+                id: node.id, title: node.title, parent_id: node.parent_id,
+                planned_date: node.planned_date, due_date: node.due_date,
+                status: node.status, progress: node.progress ?? null,
+                important: node.important === true,
+              })
+              return (
+                <div key={node.id}
+                     className="flex items-start gap-1.5 border-b border-line/60 py-1 last:border-b-0">
+                  <span className="mt-[3px] shrink-0 text-[10px] text-mine">★</span>
+                  <button
+                    onClick={edit}
+                    className="min-w-0 flex-1 break-words text-left text-[12.5px] leading-snug"
+                  >
+                    {node.title}
+                  </button>
+                  <span className="mt-[3px] max-w-[30%] shrink truncate text-right text-[10px] text-ink-3">
+                    {where || root}
+                  </span>
+                  <button
+                    onClick={edit}
+                    aria-label={`Edit ${node.title}`}
+                    title="Give it a day, a deadline, or another project"
+                    className="mt-[1px] shrink-0 rounded-md p-1 text-ink-3 hover:bg-band-nest hover:text-mine"
+                  >
+                    <PencilIcon size={11} />
+                  </button>
+                </div>
+              )
+            })}
+            <p className="pt-1 text-[10px] leading-snug text-ink-3">
+              Tap a row to give it a day, a deadline or a different project. Clearing the star
+              takes it out of here.
+            </p>
+          </TimeBlock>
+        </div>
+      )}
 
       {/*
         Comments from the exec portal — recent ones only.
