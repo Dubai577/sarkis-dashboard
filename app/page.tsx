@@ -392,23 +392,47 @@ function DashboardView() {
    * when the board was two levels deep and became a lie the moment work lived
    * inside departments: 160 assignments with due dates reported as "Due 1".
    */
+  /**
+   * Finished work is not counted, and coursework is counted apart.
+   *
+   * "285" was a quarter finished and a third coursework, which makes it a
+   * number you cannot act on: it does not go down when you work and it does
+   * not describe a load you could carry. What is left to do, with the semester
+   * named separately, is the only version of this number worth reading.
+   */
   const tally = useMemo(() => {
     const t: Record<Lens, number> = { all: 0, day: 0, due: 0, none: 0, ongoing: 0 }
+    let vt = 0
     const nodes = data?.tree ?? []
+    const byId = new Map(nodes.map(n => [n.id, n]))
     const holds = new Set(nodes.map(n => n.parent_id).filter(Boolean) as string[])
+    /** Local walk: the shared rootOf is declared further down the body. */
+    const rootTitle = (n: TreeNode) => {
+      let cur: TreeNode | undefined = n
+      const guard = new Set<string>()
+      while (cur?.parent_id && !guard.has(cur.id)) {
+        guard.add(cur.id)
+        cur = byId.get(cur.parent_id)
+      }
+      return cur?.title ?? ''
+    }
     for (const n of nodes) {
       // Containers are not work; counting them inflates every bucket.
       if (!n.parent_id || n.isGroup === true || holds.has(n.id)) continue
       // Someone else's task is not in your lens counts either.
       if (n.foreign) continue
+      // Nor is work you have already done. It stays on the page, foldable and
+      // tickable, but a count of what is left must not include it.
+      if (n.progress === 'done') continue
       t.all++
+      if (rootTitle(n).trim().toUpperCase() === 'VT') vt++
       t[dateStateOf({
         id: n.id, title: n.title, possession: n.possession,
         planned_date: n.planned_date, due_date: n.due_date,
         link: n.link, waiting: n.waiting, days: null, status: n.status,
       })]++
     }
-    return t
+    return { ...t, vt, other: t.all - vt }
   }, [data])
 
   if (error && !data) return <div className="p-4"><ErrorBanner message={error} onRetry={load} /></div>
@@ -495,8 +519,14 @@ function DashboardView() {
     return { open: open.length, late: late.length, next, depts, done: leaves.length - open.length }
   }
 
+  /**
+   * Open rows drawn, so the pair reads as one thing: of the work left, this
+   * much is on screen. Counting a finished row because its project has "show
+   * done" open would put the left number above the right one.
+   */
+  const openRows = (rows: Child[]) => rows.filter(c => c.progress !== 'done').length
   const shownRows = groups.reduce(
-    (n, g) => n + g.loose.length + g.departments.reduce((m, d) => m + d.rows.length, 0),
+    (n, g) => n + openRows(g.loose) + g.departments.reduce((m, d) => m + openRows(d.rows), 0),
     0,
   )
   const twoWeeksAgo = Date.now() - 14 * 86400000
@@ -1408,7 +1438,16 @@ function DashboardView() {
         <span className="text-[10px] uppercase tracking-wider text-ink-3">
           {lens === 'all' ? 'All work' : LENSES.find(l => l.value === lens)?.label}
         </span>
-        <span className="text-[10px] tnum text-ink-3">{shownRows} of {tally.all}</span>
+        {/*
+          Two numbers, because they are two different problems. Coursework
+          arrives on a syllabus and leaves on a deadline; everything else is
+          yours to schedule. Added together they only ever read as "too much".
+        */}
+        <span className="text-[10px] tnum text-ink-3"
+              title="Rows drawn now · tasks left, not counting coursework · coursework left. Finished work is not counted.">
+          {shownRows} of {tally.other}
+          {tally.vt > 0 && <> + {tally.vt} VT</>}
+        </span>
         <span className="ml-auto flex gap-0.5 rounded-md border border-line p-0.5">
           {(['board', 'compact'] as const).map(m => (
             <button
