@@ -525,10 +525,19 @@ function DashboardView() {
    * done" open would put the left number above the right one.
    */
   const openRows = (rows: Child[]) => rows.filter(c => c.progress !== 'done').length
-  const shownRows = groups.reduce(
-    (n, g) => n + openRows(g.loose) + g.departments.reduce((m, d) => m + openRows(d.rows), 0),
-    0,
-  )
+  /**
+   * Drawn, split the same way the totals are.
+   *
+   * One combined figure against a split total is incoherent: the drawn number
+   * included coursework while the one beside it did not, so the pair read as
+   * nineteen rows unaccounted for that were never missing. Each side of the
+   * pair now counts the same population.
+   */
+  const shown = groups.reduce((acc, g) => {
+    const n = openRows(g.loose) + g.departments.reduce((m, d) => m + openRows(d.rows), 0)
+    const isVt = g.project.title.trim().toUpperCase() === 'VT'
+    return { vt: acc.vt + (isVt ? n : 0), other: acc.other + (isVt ? 0 : n) }
+  }, { vt: 0, other: 0 })
   const twoWeeksAgo = Date.now() - 14 * 86400000
   const recentExec = (data.execPortal?.updates ?? [])
     .filter(u => Date.parse(u.created_at) >= twoWeeksAgo)
@@ -1444,9 +1453,9 @@ function DashboardView() {
           yours to schedule. Added together they only ever read as "too much".
         */}
         <span className="text-[10px] tnum text-ink-3"
-              title="Rows drawn now · tasks left, not counting coursework · coursework left. Finished work is not counted.">
-          {shownRows} of {tally.other}
-          {tally.vt > 0 && <> + {tally.vt} VT</>}
+              title="Drawn of what is left, yours and coursework kept apart. Finished work is not counted.">
+          {shown.other} of {tally.other}
+          {tally.vt > 0 && <span className="text-ink-3"> · {shown.vt} of {tally.vt} VT</span>}
         </span>
         <span className="ml-auto flex gap-0.5 rounded-md border border-line p-0.5">
           {(['board', 'compact'] as const).map(m => (
