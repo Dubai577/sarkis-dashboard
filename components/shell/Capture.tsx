@@ -25,12 +25,20 @@ interface Row { id: string; title: string; parent_id: string | null }
  * the error beside it, so the retry is one tap rather than a retype.
  */
 
-type Kind = 'project' | 'task' | 'todo' | 'note'
+type Kind = 'project' | 'task' | 'todo' | 'someday' | 'note'
 
 const KINDS: ReadonlyArray<readonly [Kind, string, string]> = [
   ['project', 'Project', 'Top level and pinned. Give it departments or tasks below.'],
   ['task', 'Task', 'Lives under a project or a department.'],
   ['todo', 'A day', 'Goes straight onto a date.'],
+  /**
+   * The fifth answer to "when": not now, and that is a decision.
+   *
+   * Without it, something that matters with no deadline had to be given a day
+   * it did not belong on and then taken off again — which is how a day fills
+   * with work nobody is waiting on.
+   */
+  ['someday', 'Someday', 'Matters, no date. Lands in the bucket under today.'],
   ['note', 'Note', 'Unsorted. File it later from the inbox.'],
 ]
 
@@ -117,6 +125,21 @@ export function Capture({
       .slice(0, 80)
   }, [rows, parentQuery, byId])
 
+  /**
+   * Where a Someday row goes when you do not say.
+   *
+   * "Nowhere yet" is fine for a task — it waits in the tree to be filed. For
+   * Someday it would be a trap: a row with no parent is a top-level project,
+   * so it would appear on the projects board and never in the bucket, which
+   * filters to things that live under something. One-offs land in Misc.
+   */
+  const oneOffs = useMemo(
+    () => rows.find(r => !r.parent_id && /^misc/i.test(r.title))
+      ?? rows.find(r => !r.parent_id)
+      ?? null,
+    [rows],
+  )
+
   // Newlines or commas — however the list came out of your head.
   const children = useMemo(
     () => childText.split(/[\n,;]+/).map(s => s.trim()).filter(s => s.length > 0),
@@ -148,7 +171,11 @@ export function Capture({
       } else {
         body.target = 'item'
         if (kind === 'project') body.board = 'pinned'
-        if (kind === 'task' && parentId) body.parent_id = parentId
+        if ((kind === 'task' || kind === 'someday') && parentId) body.parent_id = parentId
+        if (kind === 'someday') {
+          body.important = true
+          if (!parentId && oneOffs) body.parent_id = oneOffs.id
+        }
         if (personId) body.waiting_on = personId
       }
 
@@ -270,7 +297,7 @@ export function Capture({
           </Field>
         )}
 
-        {kind === 'task' && (
+        {(kind === 'task' || kind === 'someday') && (
           <div className="space-y-2">
             <Field label="Under">
               <input
@@ -280,7 +307,11 @@ export function Capture({
                 className={`${inputClass} mb-1.5`}
               />
               <select value={parentId} onChange={e => setParentId(e.target.value)} className={inputClass}>
-                <option value="">Nowhere yet — sort it later</option>
+                <option value="">
+                  {kind === 'someday' && oneOffs
+                    ? `${oneOffs.title} — one-offs`
+                    : 'Nowhere yet — sort it later'}
+                </option>
                 {parents.map(p => (
                   <option key={p.id} value={p.id}>{p.path}</option>
                 ))}

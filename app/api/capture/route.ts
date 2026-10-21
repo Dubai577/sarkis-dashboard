@@ -60,6 +60,11 @@ export async function POST(req: NextRequest) {
         insert.board = body.board
       }
       if (body.is_group === true) insert.is_group = true
+      // Captured straight into the Someday bucket: it matters, and no date is
+      // being chosen now. Dates are deliberately not accepted alongside it —
+      // a dated Someday row is a contradiction, and the sheet is where you
+      // give it one later.
+      if (body.important === true) insert.important = true
       if (typeof body.parent_id === 'string') insert.parent_id = body.parent_id
       if (typeof body.category_id === 'string') insert.category_id = body.category_id
       if (isIsoDate(typeof body.planned_date === 'string' ? body.planned_date : null)) {
