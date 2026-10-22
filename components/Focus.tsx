@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PencilIcon } from '@/components/ui/Icon'
+import { ItemActions, type ActionTarget } from '@/components/ItemActions'
+import type { TreeNode } from '@/components/Drill'
 import { mediumLabel, today as todayIso } from '@/lib/dates'
 import {
   LANES, isPending, laneMeta, laneOf, needsADay, readOnDo, URGENT_WITHIN, type Lane,
@@ -26,6 +28,9 @@ interface Row {
   planned_date: string | null
   important: boolean | null
   progress: string | null
+  status: string | null
+  priority?: string | null
+  link?: string | null
   waiting_on: string | null
   waiting_since: string | null
   is_group_view?: boolean
@@ -53,6 +58,15 @@ export function Focus() {
   const [howOpen, setHowOpen] = useState<boolean | null>(null)
   /** The deadlines-without-a-day prompt, folded until you want to work it. */
   const [daysOpen, setDaysOpen] = useState(false)
+  /**
+   * The same sheet the rest of the app opens.
+   *
+   * Focus had its own small set of inline verbs, which meant a row here could
+   * be given a date and nothing else — no project, no deadline, no pending,
+   * no rename. One row's worth of options is not a reason to learn a second
+   * editor, so this page opens the one that already exists.
+   */
+  const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null)
   const now = todayIso()
 
   const load = useCallback(async () => {
@@ -70,6 +84,43 @@ export function Focus() {
   /** The immediate parent's name: the class, the department. Declared here
       because the lane ordering below reaches for it. */
   const where = (r: Row) => (r.parent_id ? byId.get(r.parent_id)?.title ?? '' : '')
+
+  /**
+   * Every row in the shape the item sheet reads, so its "Under" picker offers
+   * real projects and its fields render from the live row rather than from the
+   * snapshot taken when the sheet opened.
+   */
+  const tree = useMemo<TreeNode[]>(() => rows.map(r => ({
+    id: r.id,
+    parent_id: r.parent_id,
+    title: r.title,
+    possession: 'mine',
+    planned_date: r.planned_date,
+    due_date: r.due_date,
+    priority: r.priority ?? null,
+    status: r.status ?? null,
+    link: r.link ?? null,
+    heat: 0,
+    color: null,
+    waiting: r.waiting_on ? people.find(p => p.id === r.waiting_on)?.name ?? null : null,
+    childCount: r.child_count ?? 0,
+    isGroup: r.is_group_view === true,
+    progress: (r.progress as TreeNode['progress']) ?? null,
+    important: r.important === true,
+    someday_order: r.someday_order ?? null,
+    waiting_on: r.waiting_on,
+  })), [rows, people])
+
+  const openSheet = (r: Row) => setActionTarget({
+    id: r.id,
+    title: r.title,
+    parent_id: r.parent_id,
+    planned_date: r.planned_date,
+    due_date: r.due_date,
+    status: r.status ?? null,
+    progress: (r.progress as ActionTarget['progress']) ?? null,
+    important: r.important === true,
+  })
 
   /**
    * Coursework, read from the top of the branch rather than the row.
@@ -403,6 +454,14 @@ export function Focus() {
                       && patch(r.id, { planned_date: e.target.value, planned_auto: false })}
                     className="w-[112px] shrink-0 rounded-sm border border-line bg-surface-2 px-1 text-[10px] tnum"
                   />
+                  <button
+                    onClick={() => openSheet(r)}
+                    title="Project, dates, pending, rename, archive"
+                    aria-label={`Edit ${r.title}`}
+                    className="shrink-0 p-0.5 text-ink-3 hover:text-mine"
+                  >
+                    <PencilIcon size={11} />
+                  </button>
                 </div>
               ))}
             </div>
@@ -532,9 +591,14 @@ export function Focus() {
                         className="ml-auto rounded-full border border-line px-2 text-[10px] text-ink-3 hover:border-dropped hover:text-dropped">
                   Archive
                 </button>
-                <a href={`/items/${r.id}`} title="Open" className="shrink-0 p-0.5 text-ink-3 hover:text-mine">
+                <button
+                  onClick={() => openSheet(r)}
+                  title="Project, dates, pending, rename, archive"
+                  aria-label={`Edit ${r.title}`}
+                  className="shrink-0 p-0.5 text-ink-3 hover:text-mine"
+                >
                   <PencilIcon size={11} />
-                </a>
+                </button>
               </div>
             </div>
           ))}
@@ -599,6 +663,15 @@ export function Focus() {
           week telling you otherwise.
         </p>
       </section>
+
+      <ItemActions
+        item={actionTarget}
+        tree={tree}
+        people={people}
+        open={!!actionTarget}
+        onClose={() => setActionTarget(null)}
+        onDone={load}
+      />
     </div>
   )
 }

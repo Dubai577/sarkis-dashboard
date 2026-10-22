@@ -309,20 +309,34 @@ function DashboardView() {
   }
 
   /**
-   * Put something straight on a day.
+   * Put something straight on a day — as a real task.
    *
-   * Capture asks what kind of thing it is and where it belongs, which is the
-   * right question for something you are filing and the wrong one for "call
-   * the pharmacy today". This makes a plain dated task and nothing else.
+   * This used to make a loose todo: a title and a date, with no row in the
+   * tree behind it. That is a dead end. A loose todo cannot hold a project, a
+   * deadline, a star or a person, so the only thing you could ever do to one
+   * was move its date — and the quick box on Today is exactly where things
+   * get typed in a hurry and need sorting out later.
+   *
+   * It lands in Misc. because asking "which project?" at this moment is the
+   * question this box exists to skip. Every row it makes opens the ordinary
+   * item sheet, so the answer can be given in a tap whenever you like.
    */
   async function addTodo(date: string, title: string) {
     const text = title.trim()
     if (!text) return
+    const oneOffs = (data?.tree ?? []).find(
+      n => !n.parent_id && /^misc/i.test(n.title),
+    ) ?? (data?.tree ?? []).find(n => !n.parent_id)
     try {
       const res = await fetch('/api/capture', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, target: 'todo', task_date: date }),
+        body: JSON.stringify({
+          text,
+          target: 'item',
+          parent_id: oneOffs?.id,
+          planned_date: date,
+        }),
       })
       if (!res.ok) throw new Error('Could not add that.')
       load()
@@ -2130,6 +2144,38 @@ function TodoLine({
       setBusy(false)
     }
   }
+
+  /**
+   * Turn a loose todo into a real task, keeping its day.
+   *
+   * The item is created first and the todo deleted only once that succeeded,
+   * so a failure halfway leaves the row where it was rather than losing it.
+   * Sync then re-materialises the day from the new item, which is what makes
+   * the sheet open on it afterwards.
+   */
+  async function promote() {
+    const oneOffs = tree.find(n => !n.parent_id && /^misc/i.test(n.title))
+      ?? tree.find(n => !n.parent_id)
+    setBusy(true)
+    try {
+      const res = await fetch('/api/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: draftTitle.trim() || todo.title,
+          parent_id: oneOffs?.id ?? null,
+          planned_date: draftDate,
+          planned_auto: false,
+        }),
+      })
+      if (!res.ok) return
+      await fetch(`/api/todos/${todo.id}`, { method: 'DELETE' })
+      setEditing(false)
+      onChanged?.()
+    } finally {
+      setBusy(false)
+    }
+  }
   /**
    * A materialised item carries context a bare todo does not: which class it
    * belongs to, when it is actually due, and — if rollover has walked it
@@ -2180,6 +2226,17 @@ function TodoLine({
           <button disabled={busy} onClick={() => setEditing(false)}
                   className="text-[11px] text-ink-3">
             Cancel
+          </button>
+          {/*
+            The way out of a dead end.
+
+            Rows made before the quick box created real tasks are stuck with a
+            title and a date; this promotes one in place, keeping its day, so
+            it can then be given a project and a deadline like anything else.
+          */}
+          <button disabled={busy} onClick={promote}
+                  className="text-[11px] text-mine">
+            Make it a task
           </button>
           <button disabled={busy} onClick={deletePlain}
                   className="ml-auto text-[11px] text-dropped">
