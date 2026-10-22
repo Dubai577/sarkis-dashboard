@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PencilIcon } from '@/components/ui/Icon'
 import { mediumLabel, today as todayIso } from '@/lib/dates'
 import {
-  PENDING, QUADRANTS, isPending, laneOf, readOnDo, URGENT_WITHIN, type Lane,
+  LANES, isPending, laneMeta, laneOf, needsADay, readOnDo, URGENT_WITHIN, type Lane,
 } from '@/lib/focus'
 
 /**
@@ -51,6 +51,8 @@ export function Focus() {
    * work is marked, it folds away and stays where it can be reopened.
    */
   const [howOpen, setHowOpen] = useState<boolean | null>(null)
+  /** The deadlines-without-a-day prompt, folded until you want to work it. */
+  const [daysOpen, setDaysOpen] = useState(false)
   const now = todayIso()
 
   const load = useCallback(async () => {
@@ -99,9 +101,25 @@ export function Focus() {
   }, [rows])
 
   const buckets = useMemo(() => {
-    const out: Record<Lane, Row[]> =
-      { do: [], schedule: [], delegate: [], drop: [], pending: [] }
-    for (const r of leaves) out[laneFor(r)].push(r)
+    const out: Record<Lane, Row[]> = { do: [], free: [], clear: [], pending: [] }
+    /**
+     * Not a lane: a deadline with no day chosen for it.
+     *
+     * These are not today's work, so they do not belong beside today's work —
+     * but they are the one thing the matrix is famous for catching, so they
+     * get a prompt of their own above the lists.
+     */
+    const needDay: Row[] = []
+    /** Decided or unjudged: on the home page, deliberately not on this one. */
+    let elsewhere = 0
+    for (const r of leaves) {
+      const lane = laneFor(r)
+      if (lane) out[lane].push(r)
+      else {
+        elsewhere++
+        if (needsADay({ ...r, school: isSchool(r) }, now)) needDay.push(r)
+      }
+    }
     /**
      * Deadlines first, then your ranking, then by project.
      *
@@ -125,8 +143,9 @@ export function Focus() {
       return where(a).localeCompare(where(b)) || a.title.localeCompare(b.title)
     }
     for (const k of Object.keys(out) as Lane[]) out[k].sort(order)
-    return out
-  }, [leaves, laneFor])
+    needDay.sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+    return { ...out, needDay, elsewhere }
+  }, [leaves, laneFor, isSchool, now])
 
   async function patch(id: string, body: Record<string, unknown>) {
     setBusy(id)
@@ -154,7 +173,7 @@ export function Focus() {
   }
 
 
-  /** Tomorrow, then the next weekdays by name — the Schedule verb. */
+  /** Tomorrow, then the next weekdays by name — for picking a day. */
   const quickDays = useMemo(() => {
     const out: { date: string; label: string }[] = []
     for (let i = 1; i <= 9 && out.length < 5; i++) {
@@ -172,9 +191,9 @@ export function Focus() {
   const anyStarred = rows.some(r => r.important)
   const showHow = howOpen ?? !anyStarred
 
-  const meta = tab === 'pending' ? PENDING : QUADRANTS.find(q => q.key === tab)!
+  const meta = laneMeta(tab)
   const list = buckets[tab]
-  const note = readOnDo(buckets.do.length, buckets.schedule.length)
+  const note = readOnDo(buckets.do.length, buckets.needDay.length)
 
   return (
     <div className="mx-auto max-w-3xl px-3 py-4">
@@ -250,10 +269,10 @@ export function Focus() {
               <table className="mt-1 w-full border-collapse">
                 <tbody className="align-top">
                   {([
-                    ['Do', 'Assignment due tonight · exam tomorrow · something you promised for today'],
-                    ['Schedule', 'A project due in three months · reviewing notes · exercise · planning the next term'],
-                    ['Clear it', 'A favour with a date on it · a reply someone needs today · booking a thing before it is gone'],
-                    ['Anytime', 'Tidying a folder · a small fix that bothers you · an errand with no deadline'],
+                    ['Do now', 'Assignment due tonight · exam tomorrow · something you promised for today'],
+                    ['Free time', 'A call you keep meaning to make · a letter to write · bloodwork · a gift to find'],
+                    ['If you get to it', 'A favour with a date · a reply someone needs today · booking a thing before it is gone'],
+                    ['Needs a day', 'An exam in December · a project due next month · anything with a deadline and no plan'],
                   ] as const).map(([k, v]) => (
                     <tr key={k} className="border-t border-line/50 first:border-t-0">
                       <td className="w-[108px] py-1 pr-2 text-[11px] font-medium text-ink">{k}</td>
@@ -274,18 +293,17 @@ export function Focus() {
             </p>
 
             <p className="mt-2.5 text-[11px] leading-snug text-ink-2">
-              <span className="font-medium">Where this differs from the handout:</span> its
-              bottom-right box is for distractions to delete — scrolling, meetings nobody needed.
-              Nothing like that reaches here, because the filtering happens before anything gets
-              typed in. So that box is <span className="font-medium">Anytime</span>: real work with
-              no clock and nothing riding on it. The risk is not that you do these, it is that you
-              do them <span className="italic">first</span>, because they are the easiest things on
-              the list.
+              <span className="font-medium">Where this differs from the handout:</span> it has a
+              fourth box for distractions to delete — scrolling, meetings nobody needed. Nothing
+              like that reaches here, because the filtering happens before anything gets typed in.
+              So there are three, and the long tail of real work with no clock and no star is not
+              a quadrant at all: it is the backlog, and it lives under All work.
             </p>
 
             <p className="mt-2 text-[11px] leading-snug text-ink-3">
-              Columbia&rsquo;s handout suggests keeping each box under about ten. If Do has twenty
-              in it, that is not a plan — it is the week telling you Schedule was skipped.
+              Columbia&rsquo;s handout suggests keeping each box under about ten. If Do now has
+              twenty in it, that is not a plan — it is the week telling you those deadlines
+              never got a day.
             </p>
           </div>
         )}
@@ -303,17 +321,25 @@ export function Focus() {
         }`}
       >
         <span className="h-3 w-[3px] shrink-0 self-center rounded-full"
-              style={{ background: `var(${PENDING.tone})` }} />
-        <span className="text-[12px] font-semibold">{PENDING.title}</span>
+              style={{ background: `var(${laneMeta('pending').tone})` }} />
+        <span className="text-[12px] font-semibold">{laneMeta('pending').title}</span>
         <span className="text-[10px] text-ink-3">with someone else</span>
         <span className="ml-auto text-[18px] font-semibold leading-none tnum">
           {buckets.pending.length}
         </span>
       </button>
 
-      {/* The matrix itself: four corners, and only four. */}
+      {/*
+        Three boxes, not four.
+
+        The missing corner is the handout's bin for distractions, and nothing
+        reaching this app belongs in it — what actually collected there was a
+        hundred rows nobody had judged yet, which is the backlog, and the
+        backlog has its own page. The count of what is NOT here is printed
+        below instead, so the omission is visible rather than silent.
+      */}
       <div className="mb-3 grid grid-cols-2 gap-1.5">
-        {QUADRANTS.map(q => {
+        {LANES.filter(l => l.key !== 'pending').map(q => {
           const n = buckets[q.key].length
           const on = tab === q.key
           return (
@@ -344,6 +370,46 @@ export function Focus() {
         </p>
       )}
 
+      {/*
+        The one prompt the matrix is actually famous for: schedule it before it
+        schedules you. Not a lane, because an exam in December is not today's
+        work — but a deadline with no day on it is exactly how a December exam
+        becomes a Do-now emergency.
+      */}
+      {buckets.needDay.length > 0 && (
+        <section className="mb-3 rounded-lg border border-mine/30 bg-mine-soft/40 px-2.5 py-2">
+          <button
+            onClick={() => setDaysOpen(!daysOpen)}
+            className="flex w-full items-baseline gap-2 text-left"
+          >
+            <span className="text-[12px] font-medium text-ink">
+              {buckets.needDay.length} with a deadline and no day
+            </span>
+            <span className="ml-auto text-[10px] text-mine">{daysOpen ? 'hide' : 'pick days'}</span>
+          </button>
+          {daysOpen && (
+            <div className="mt-1.5 space-y-1">
+              {buckets.needDay.map(r => (
+                <div key={r.id} className="flex flex-wrap items-center gap-1.5">
+                  <span className="min-w-0 flex-1 truncate text-[11.5px]">{r.title}</span>
+                  <span className="shrink-0 text-[10px] tnum text-ink-3">
+                    due {mediumLabel(r.due_date!)}
+                  </span>
+                  <input
+                    type="date"
+                    max={r.due_date ?? undefined}
+                    disabled={busy === r.id}
+                    onChange={e => e.target.value
+                      && patch(r.id, { planned_date: e.target.value, planned_auto: false })}
+                    className="w-[112px] shrink-0 rounded-sm border border-line bg-surface-2 px-1 text-[10px] tnum"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       <div className="mb-1 flex items-baseline gap-2">
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-ink-2">{meta.title}</h2>
         <span className="text-[10px] tnum text-ink-3">{list.length}</span>
@@ -358,17 +424,7 @@ export function Focus() {
 
       {/* the legend lives below the lists, see the note at the bottom */}
       {list.length === 0 ? (
-        <p className="py-2 text-[12px] text-ink-3">
-          {tab === 'do'
-            ? 'Nothing urgent and important. That is the goal, not a gap.'
-            : tab === 'pending'
-              ? 'Nothing sitting with anyone else.'
-              : tab === 'delegate'
-                ? 'Nothing on someone else’s clock.'
-                : tab === 'drop'
-                  ? 'Nothing waiting for a gap.'
-                  : 'Empty.'}
-        </p>
+        <p className="py-2 text-[12px] text-ink-3">{meta.empty}</p>
       ) : (
         <div className="rounded-xl border border-line/50 bg-surface shadow-card">
           {list.map(r => (
@@ -421,7 +477,7 @@ export function Focus() {
 
               {/* One row of verbs, and the quadrant's own verb comes first. */}
               <div className="mt-1 flex flex-wrap items-center gap-1 pl-5">
-                {tab === 'schedule' || tab === 'do' ? (
+                {tab === 'do' || tab === 'free' ? (
                   picking === r.id ? (
                     <>
                       {quickDays.map(d => (
@@ -439,12 +495,17 @@ export function Focus() {
                   ) : (
                     <button onClick={() => setPicking(r.id)}
                             className="rounded-full border border-theirs/40 px-2 text-[10px] text-theirs hover:bg-theirs-soft">
-                      {r.planned_date ? `planned ${mediumLabel(r.planned_date)}` : 'Pick a day'}
+                      {r.planned_date
+                        ? `planned ${mediumLabel(r.planned_date)}`
+                        /* Free time is dateless on purpose, so the offer is to
+                           do it NOW, not to schedule it for a day you will
+                           then have to keep. */
+                        : tab === 'free' ? 'Doing it today' : 'Pick a day'}
                     </button>
                   )
                 ) : null}
 
-                {(tab === 'pending' || tab === 'delegate' || tab === 'drop') && (
+                {(tab === 'pending' || tab === 'clear') && (
                   <select
                     value={r.waiting_on ?? ''}
                     onChange={e => patch(r.id, {
@@ -487,20 +548,29 @@ export function Focus() {
       */}
       <section className="mt-5 rounded-xl border border-line/50 bg-surface-2 p-3">
         <h2 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-2">
-          What the four mean
+          What these mean
         </h2>
         <p className="mb-2 text-[11px] leading-snug text-ink-3">
           <span className="font-medium text-ink-2">Urgent</span> is worked out for you: late, or
-          due within {URGENT_WITHIN} days. It is read from the deadline, never from the day you
+          due within {URGENT_WITHIN} days, read from the deadline rather than from the day you
           planned to do it — scheduling something for tomorrow is a decision you made, not a
-          reason it became urgent.{' '}
+          reason it became urgent. Coursework is the one exception: its planned day comes from
+          its deadline, so arriving at that day counts.{' '}
           <span className="font-medium text-ink-2">Important</span> is the star, and the only
-          part you set.
+          part you set — coursework aside, which always counts.
+        </p>
+
+        <p className="mb-2 rounded-md bg-surface px-2 py-1.5 text-[11px] leading-snug text-ink-2">
+          <span className="font-medium">This page is today, zoomed in — not everything.</span>{' '}
+          {buckets.elsewhere} open things are deliberately not here: work with a day already
+          chosen, which that day will bring back, and work nobody has judged yet. Those live
+          under All work on home. If you cleared these three boxes every day, you would run out
+          of work — which is the only reason the page is worth opening.
         </p>
 
         <table className="w-full border-collapse">
           <tbody>
-            {QUADRANTS.map(q => (
+            {LANES.map(q => (
               <tr key={q.key} className="border-t border-line/60 align-top">
                 <td className="py-1.5 pr-2 whitespace-nowrap">
                   <span className="inline-flex items-baseline gap-1.5">
@@ -520,31 +590,13 @@ export function Focus() {
           </tbody>
         </table>
 
-        <table className="mt-2 w-full border-collapse border-t border-line/60">
-          <tbody>
-            <tr className="align-top">
-              <td className="py-1.5 pr-2 whitespace-nowrap">
-                <span className="inline-flex items-baseline gap-1.5">
-                  <span className="h-3 w-[3px] shrink-0 translate-y-[2px] rounded-full"
-                        style={{ background: `var(${PENDING.tone})` }} />
-                  <span className="text-[12px] font-semibold">{PENDING.title}</span>
-                </span>
-              </td>
-              <td className="py-1.5 pr-2 text-[11px] leading-snug text-ink-2">
-                <span className="text-ink-3">Not a quadrant.</span> {PENDING.blurb}
-              </td>
-              <td className="py-1.5 whitespace-nowrap text-right text-[10.5px] text-mine">
-                {PENDING.verb}
-              </td>
-            </tr>
-          </tbody>
-        </table>
 
         <p className="mt-2 border-t border-line/60 pt-2 text-[11px] leading-snug text-ink-3">
-          The point of the four is not sorting. It is that <span className="text-ink-2">Schedule</span>{' '}
-          is the only quadrant that shrinks the others: everything in{' '}
-          <span className="text-ink-2">Do</span> was in Schedule once and was left there too long.
-          A week spent mostly in Schedule is a week that went well.
+          The point is not sorting. It is that giving a deadline a day is the only move that
+          shrinks the other boxes: everything in <span className="text-ink-2">Do now</span> was a
+          deadline with no day once. A week where you mostly picked days in advance is a week
+          that went well — and a <span className="text-ink-2">Do now</span> of twenty is the
+          week telling you otherwise.
         </p>
       </section>
     </div>
