@@ -258,17 +258,37 @@ export function ItemActions({
             <input
               value={newPerson}
               onChange={e => setNewPerson(e.target.value)}
+              /**
+               * Typing a name that already exists used to do nothing at all.
+               *
+               * people.name carries a unique index, so the insert came back
+               * 400 and the old code only acted on success — no handover, no
+               * error, nothing. A name you have used before is the LIKELIEST
+               * thing to type here, so that silence was the common case. Now
+               * an existing name simply selects that person, and a real
+               * failure says so instead of swallowing itself.
+               */
               onKeyDown={async e => {
                 if (e.key !== 'Enter' || !newPerson.trim()) return
+                const name = newPerson.trim()
+                const known = people.find(p => p.name.toLowerCase() === name.toLowerCase())
+                if (known) {
+                  setNewPerson('')
+                  patch({ waiting_on: known.id, waiting_since: todayIso() })
+                  return
+                }
+                setError('')
                 const res = await fetch('/api/people', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ name: newPerson.trim() }),
+                  body: JSON.stringify({ name }),
                 })
                 const body = await res.json().catch(() => ({}))
                 if (body?.person?.id) {
                   setNewPerson('')
                   patch({ waiting_on: body.person.id, waiting_since: todayIso() })
+                } else {
+                  setError(body?.error || `Could not add ${name}.`)
                 }
               }}
               placeholder="or add someone new, Enter to save"

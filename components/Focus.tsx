@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { PencilIcon } from '@/components/ui/Icon'
+import { ChevronDownIcon, ChevronUpIcon, PencilIcon } from '@/components/ui/Icon'
 import { ItemActions, type ActionTarget } from '@/components/ItemActions'
 import type { TreeNode } from '@/components/Drill'
 import { mediumLabel, today as todayIso } from '@/lib/dates'
@@ -212,6 +212,35 @@ export function Focus() {
       setBusy(null)
     }
   }
+
+  /**
+   * Move one Free time row past its neighbour.
+   *
+   * The same column home writes, renumbered the same way, so the order you
+   * set on either page is the order on both: there is one bucket, seen from
+   * two places. Writing only the moved row would leave the rest tied at
+   * whatever they were, which is how hand ordering rots.
+   */
+  const rankFree = useCallback(async (list: Row[], id: string, delta: number) => {
+    const order = [...list]
+    const from = order.findIndex(r => r.id === id)
+    const to = from + delta
+    if (from < 0 || to < 0 || to >= order.length) return
+    const [moved] = order.splice(from, 1)
+    order.splice(to, 0, moved)
+    setBusy(id)
+    try {
+      await Promise.all(order.map((r, i) =>
+        r.someday_order === i ? null : fetch(`/api/items/${r.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ someday_order: i }),
+        })))
+      await load()
+    } finally {
+      setBusy(null)
+    }
+  }, [load])
 
   async function archive(id: string) {
     setBusy(id)
@@ -599,6 +628,31 @@ export function Focus() {
                 >
                   <PencilIcon size={11} />
                 </button>
+
+                {/* Rank, but only where ranking is the whole ordering: these
+                    have no dates, so nothing else can say which comes first. */}
+                {tab === 'free' && (
+                  <span className="flex shrink-0">
+                    <button
+                      onClick={() => rankFree(list, r.id, -1)}
+                      disabled={busy === r.id || list[0]?.id === r.id}
+                      aria-label={`Move ${r.title} up`}
+                      title="Higher"
+                      className="rounded-md p-0.5 text-ink-3 hover:text-mine disabled:opacity-25"
+                    >
+                      <ChevronUpIcon size={11} />
+                    </button>
+                    <button
+                      onClick={() => rankFree(list, r.id, 1)}
+                      disabled={busy === r.id || list[list.length - 1]?.id === r.id}
+                      aria-label={`Move ${r.title} down`}
+                      title="Lower"
+                      className="rounded-md p-0.5 text-ink-3 hover:text-mine disabled:opacity-25"
+                    >
+                      <ChevronDownIcon size={11} />
+                    </button>
+                  </span>
+                )}
               </div>
             </div>
           ))}

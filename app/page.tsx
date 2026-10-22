@@ -599,6 +599,16 @@ function DashboardView() {
     (t.source_item_id
       ? (data.tree ?? []).find(n => n.id === t.source_item_id)?.due_date
       : null) ?? null
+  /**
+   * A mirror whose source has been handed over.
+   *
+   * The item leaves the day the moment it is assigned, but its todo mirror
+   * sits on the date until the next sync notices — and sync only removes a
+   * mirror when the PLAN is gone, which handing over does not change. So the
+   * day filters it out directly.
+   */
+  const handedOver = (t: Todo) => !!(t.source_item_id
+    && (data.tree ?? []).find(n => n.id === t.source_item_id)?.waiting_on)
   const blown = (t: Todo) => {
     const due = dueOf(t)
     return !!due && due < data.date
@@ -607,6 +617,7 @@ function DashboardView() {
     .filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
     .filter(t => meantFor(t) < data.date)
     .filter(t => !t.is_complete || justChecked.has(t.id))
+    .filter(t => !handedOver(t))
     .sort((a, b) => meantFor(a).localeCompare(meantFor(b)))
   const overdueTodos = behind.filter(blown)
   /**
@@ -631,6 +642,7 @@ function DashboardView() {
   const todayAll = [...data.todos, ...carriedTodos, ...lateDoneToday]
     .filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
     .filter(t => !lateIds.has(t.id))
+    .filter(t => !handedOver(t))
     .sort((a, b) =>
     Number(settled(a)) - Number(settled(b))
     || (a.start_time ?? '').localeCompare(b.start_time ?? ''))
@@ -663,6 +675,15 @@ function DashboardView() {
 
   const datedOn = (from: string, to: string) => (data.tree ?? [])
     .filter(n => n.parent_id && n.isGroup !== true)
+    /**
+     * Work sitting with someone else is not on your day.
+     *
+     * The sheet says so when you hand something over — out of Today, out of
+     * Late — and the page then went on showing it anyway, because these
+     * blocks only ever asked about dates. A row you cannot act on in a list
+     * of what to do today is worse than not having the list.
+     */
+    .filter(n => !n.waiting_on)
     // Finished ones stay on their day, struck through and sunk, exactly as a
     // ticked todo does. Dropping them the instant they were ticked took away
     // the strike-through, and with it the only reward the list gives.
@@ -707,6 +728,9 @@ function DashboardView() {
   const overdueItems = (data.tree ?? [])
     .filter(n => n.parent_id && n.isGroup !== true)
     .filter(n => !mirrored.has(n.id) && !n.foreign)
+    // Handed over: its deadline is now someone else's problem to be chased,
+    // not yours to be late on. It is listed under Pending instead.
+    .filter(n => !n.waiting_on)
     .filter(n => n.progress !== 'done')
     .filter(n => n.due_date && n.due_date < data.date)
     // A deadline that passed but a plan still ahead of you is not late: you
@@ -749,6 +773,7 @@ function DashboardView() {
   })()
   const nextWeekTodos = data.weekTodos
     .filter(t => !t.is_complete && t.task_date >= nextWeekStart && t.task_date <= nextWeekEnd)
+    .filter(t => !handedOver(t))
     .sort((a, b) => a.task_date.localeCompare(b.task_date))
   const itemsNextWeek = datedOn(nextWeekStart, nextWeekEnd) as {
     node: TreeNode; when: string; kind: 'planned' | 'due' | 'followup'
@@ -756,6 +781,9 @@ function DashboardView() {
 
   const laterThisWeek = data.weekTodos
     .filter(t => !t.is_complete && t.task_date > data.date && t.task_date <= weekEnd)
+    // Out of your week too, not just your day: you cannot do Thursday's work
+    // if Thursday's work is with someone else.
+    .filter(t => !handedOver(t))
     .sort((a, b) => a.task_date.localeCompare(b.task_date))
 
   /**
