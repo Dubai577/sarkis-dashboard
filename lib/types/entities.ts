@@ -118,6 +118,8 @@ export interface Item {
    * 023 is applied by hand.
    */
   someday_order?: number | null
+  /** Hand position within one day's list, shared with todos. */
+  day_order?: number | null
 
   waiting_on: Uuid | null
   waiting_since: IsoDate | null

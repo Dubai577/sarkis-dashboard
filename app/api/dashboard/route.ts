@@ -286,6 +286,7 @@ export async function GET() {
         follow_up_on: i.follow_up_on ?? null,
         important: i.important === true,
         someday_order: i.someday_order ?? null,
+        day_order: i.day_order ?? null,
         waiting_on: i.waiting_on ?? null,
         updated_at: i.updated_at ?? null,
       })),

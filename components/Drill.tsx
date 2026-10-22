@@ -51,6 +51,8 @@ export interface TreeNode {
   important?: boolean | null
   /** Hand position in the Someday bucket; null is unplaced and sorts last. */
   someday_order?: number | null
+  /** Hand position within a day's list; null keeps the chosen sort. */
+  day_order?: number | null
   waiting_on?: string | null
 }
 

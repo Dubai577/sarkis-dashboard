@@ -51,6 +51,16 @@ interface Project {
   children: Child[]
 }
 
+/**
+ * How a day is ordered.
+ *
+ * 'mine' is school-last rather than a filter: the point is to see your own
+ * work first without losing sight of what the semester wants. 'custom' is the
+ * spreadsheet answer — once a row has been moved by hand, the list is yours
+ * and no rule overrides it.
+ */
+type DaySort = 'due' | 'class' | 'name' | 'priority' | 'mine' | 'custom'
+
 interface Todo {
   id: string; title: string; task_date: string; is_complete: boolean
   start_time: string | null
@@ -59,6 +69,8 @@ interface Todo {
   source_item_id?: string | null
   /** The date it was originally meant to happen, before any rollover. */
   origin_date?: string | null
+  /** Hand position within its day, shared with items. */
+  day_order?: number | null
   roll_count?: number | null
 }
 
@@ -166,7 +178,7 @@ function DashboardView() {
    * are in changes what the list is for: by deadline it is triage, by class it
    * is a work session, by name it is a lookup.
    */
-  const [daySort, setDaySort] = useState<'due' | 'class' | 'name' | 'priority'>('due')
+  const [daySort, setDaySort] = useState<DaySort>('due')
   /** Flip the chosen order: latest first, lowest priority first, Z to A. */
   const [dayDesc, setDayDesc] = useState(false)
   /**
@@ -254,6 +266,50 @@ function DashboardView() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ someday_order: i }),
+      })))
+    load()
+  }, [])
+
+  /**
+   * Move one row of a day's list past its neighbour.
+   *
+   * Today is a mixed list — mirrors of planned items, loose dated rows, items
+   * carrying their own date — so a position cannot live in one table. Both
+   * carry the same column and each row is written to whichever holds it.
+   *
+   * The whole visible list is renumbered, not just the moved row: every row
+   * starts unplaced, so one write would lift one row and leave the rest tied,
+   * which is how hand ordering rots after the second drag.
+   */
+  const moveDayRow = useCallback(async (
+    rows: { rowId: string; kind: 'todo' | 'item'; key: string; order: number | null }[],
+    key: string,
+    delta: number,
+  ) => {
+    const order = [...rows]
+    const from = order.findIndex(r => r.key === key)
+    const to = from + delta
+    if (from < 0 || to < 0 || to >= order.length) return
+    const [moved] = order.splice(from, 1)
+    order.splice(to, 0, moved)
+    await Promise.all(order.map((r, i) =>
+      r.order === i ? null : fetch(`/api/${r.kind === 'todo' ? 'todos' : 'items'}/${r.rowId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ day_order: i }),
+      })))
+    load()
+  }, [])
+
+  /** Hand back to the rules: every position cleared, the sort takes over. */
+  const clearDayOrder = useCallback(async (
+    rows: { rowId: string; kind: 'todo' | 'item'; order: number | null }[],
+  ) => {
+    await Promise.all(rows.filter(r => r.order !== null).map(r =>
+      fetch(`/api/${r.kind === 'todo' ? 'todos' : 'items'}/${r.rowId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ day_order: null }),
       })))
     load()
   }, [])
@@ -818,6 +874,14 @@ function DashboardView() {
     sub: string
     /** Urgent 0, Soon 1, Whenever 2, unset 3 — so a plain sort puts urgent first. */
     pri: number
+    /** Hand position, null until the row has been moved. */
+    order: number | null
+    /** Which table holds this row, so a move writes to the right one. */
+    kind: 'todo' | 'item'
+    /** The id in that table. */
+    rowId: string
+    /** Coursework, for the school-last order. */
+    school: boolean
   }
 
   const PRI: Record<string, number> = { Urgent: 0, Soon: 1, Whenever: 2 }
@@ -861,6 +925,9 @@ function DashboardView() {
         cls: parent?.title ?? '\uffff', name: t.title,
         root: rootOf(src, nodes), sub: subOf(src, nodes),
         pri: PRI[src?.priority ?? ''] ?? 3,
+        order: t.day_order ?? null,
+        kind: 'todo' as const, rowId: t.id,
+        school: rootOf(src, nodes).trim().toUpperCase() === 'VT',
       }
     })
     for (const it of items) {
@@ -871,12 +938,20 @@ function DashboardView() {
         cls: parent?.title ?? '\uffff', name: it.node.title,
         root: rootOf(it.node, nodes), sub: subOf(it.node, nodes),
         pri: PRI[it.node.priority ?? ''] ?? 3,
+        order: it.node.day_order ?? null,
+        kind: 'item' as const, rowId: it.node.id,
+        school: rootOf(it.node, nodes).trim().toUpperCase() === 'VT',
       })
     }
     const shown = rows.filter(r =>
       (!dayArea || r.root === dayArea) && (!daySub || r.sub === daySub))
     const cmp = (a: DayRow, b: DayRow): number => {
       if (daySort === 'priority') return a.pri - b.pri
+      if (daySort === 'mine') {
+        // Yours first, then the semester; inside each, the nearest deadline.
+        if (a.school !== b.school) return a.school ? 1 : -1
+        return a.due.localeCompare(b.due)
+      }
       const by = daySort === 'due' ? 'due' : daySort === 'class' ? 'cls' : 'name'
       return a[by].localeCompare(b[by])
     }
@@ -889,10 +964,22 @@ function DashboardView() {
      * Done-ness outranks every other key: a finished thing is not competing for
      * attention with an unfinished one, whatever their deadlines say.
      */
-    return shown.sort((a, b) =>
-      Number(a.done) - Number(b.done)
-      || (dayDesc ? -1 : 1) * cmp(a, b)
-      || a.name.localeCompare(b.name))
+    /**
+     * A row you moved by hand wins, and keeps winning.
+     *
+     * Hand-placed rows rise to the top in the order you put them; everything
+     * untouched keeps the chosen sort underneath. That is what makes this feel
+     * like the spreadsheet it replaced: move one row and nothing else jumps.
+     * Reversing the order is left to the sort, never applied to your order —
+     * nobody drags a list into place and then asks for it upside down.
+     */
+    return shown.sort((a, b) => {
+      if (Number(a.done) !== Number(b.done)) return Number(a.done) - Number(b.done)
+      const ao = a.order ?? Infinity
+      const bo = b.order ?? Infinity
+      if (ao !== bo) return ao - bo
+      return (dayDesc ? -1 : 1) * cmp(a, b) || a.name.localeCompare(b.name)
+    })
   }
 
   const byDay = (todos: Todo[], items: typeof itemsThisWeek) => {
@@ -990,6 +1077,17 @@ function DashboardView() {
       || a.root.localeCompare(b.root)
       || a.node.title.localeCompare(b.node.title))
 
+  /**
+   * Every row of today that has been moved by hand.
+   *
+   * Collected from the day's two lists rather than from the tables, so
+   * clearing only touches what is actually on the day you are looking at.
+   */
+  const handPlaced = [
+    ...toRows(overdueTodos, overdueItems),
+    ...toRows(todayAll, itemsDueToday),
+  ].filter(r => r.order !== null)
+
   const weekByDay = byDay(laterThisWeek, itemsThisWeek)
   const nextWeekByDay = byDay(nextWeekTodos, itemsNextWeek)
 
@@ -1000,7 +1098,10 @@ function DashboardView() {
       {/* ── time: the two questions with an answer today ── */}
       <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
         <span className="text-[10px] uppercase tracking-wider text-ink-3">Order by</span>
-        {([['due', 'Deadline'], ['priority', 'Priority'], ['class', 'Class'], ['name', 'Name']] as const).map(([v, label]) => (
+        {([
+          ['due', 'Deadline'], ['mine', 'Mine first'], ['priority', 'Priority'],
+          ['class', 'Class'], ['name', 'Name'],
+        ] as const).map(([v, label]) => (
           <button
             key={v}
             onClick={() => setDaySort(v)}
@@ -1020,6 +1121,20 @@ function DashboardView() {
         >
           {dayDesc ? '\u2193 reversed' : '\u2191'}
         </button>
+
+        {/*
+          Only offered once something has actually been moved, because until
+          then there is nothing to hand back and the button would be a riddle.
+        */}
+        {handPlaced.length > 0 && (
+          <button
+            onClick={() => clearDayOrder(handPlaced)}
+            title="Drop every hand position and let the sort decide again"
+            className="rounded-full border border-mine bg-mine-soft px-2 py-px text-[10.5px] text-mine"
+          >
+            my order · clear
+          </button>
+        )}
 
         {areasOnShow.length > 1 && (
           <>
@@ -1141,15 +1256,47 @@ function DashboardView() {
             // fold; short ones are just shown.
             const expanded = lateOpen ?? lateRows.length <= 8
 
-            const render = (r: typeof lateRows[number]) =>
-              r.todo ? (
-                <TodoLine key={r.key} todo={r.todo} onToggle={() => toggleTodo(r.todo!)}
-                          tree={data.tree ?? []} today={data.date} onEdit={setActionTarget} onChanged={load} />
-              ) : (
-                <DatedItem key={r.key} node={r.item!.node} kind={r.item!.kind}
-                           tree={data.tree ?? []} onOpen={t => setActionTarget(t)}
-                           today={data.date} onChanged={load} />
-              )
+            /**
+             * A row, with the two controls a spreadsheet would have given you.
+             *
+             * The arrows sit outside the row component because both kinds of
+             * row — a todo and a dated item — need them, and the move is a
+             * property of the LIST rather than of either component.
+             */
+            const render = (r: typeof lateRows[number], within: typeof lateRows) => (
+              <div key={r.key} className="flex items-start gap-0.5">
+                <div className="min-w-0 flex-1">
+                  {r.todo ? (
+                    <TodoLine todo={r.todo} onToggle={() => toggleTodo(r.todo!)}
+                              tree={data.tree ?? []} today={data.date} onEdit={setActionTarget} onChanged={load} />
+                  ) : (
+                    <DatedItem node={r.item!.node} kind={r.item!.kind}
+                               tree={data.tree ?? []} onOpen={t => setActionTarget(t)}
+                               today={data.date} onChanged={load} />
+                  )}
+                </div>
+                <span className="mt-[5px] flex shrink-0">
+                  <button
+                    onClick={() => moveDayRow(within, r.key, -1)}
+                    disabled={within[0]?.key === r.key}
+                    aria-label={`Move ${r.name} up`}
+                    title="Move up"
+                    className="rounded p-0.5 text-ink-3 opacity-50 hover:text-mine hover:opacity-100 disabled:opacity-20"
+                  >
+                    <ChevronUpIcon size={10} />
+                  </button>
+                  <button
+                    onClick={() => moveDayRow(within, r.key, 1)}
+                    disabled={within[within.length - 1]?.key === r.key}
+                    aria-label={`Move ${r.name} down`}
+                    title="Move down"
+                    className="rounded p-0.5 text-ink-3 opacity-50 hover:text-mine hover:opacity-100 disabled:opacity-20"
+                  >
+                    <ChevronDownIcon size={10} />
+                  </button>
+                </span>
+              </div>
+            )
 
             if (lateRows.length === 0 && todayRows.length === 0) {
               return <p className="py-1 text-[12px] text-ink-3">Nothing on today.</p>
@@ -1226,11 +1373,11 @@ function DashboardView() {
                                   )}
                                   <span className="shrink-0 text-[10px] text-mine">{open ? 'fold' : 'show'}</span>
                                 </button>
-                                {open && <div className="pl-1.5">{rs.map(render)}</div>}
+                                {open && <div className="pl-1.5">{rs.map(x => render(x, lateRows))}</div>}
                               </div>
                             )
                           })}
-                          {loose.map(render)}
+                          {loose.map(x => render(x, lateRows))}
                         </>
                       )
                     })()}
@@ -1248,7 +1395,7 @@ function DashboardView() {
                         <span className="text-[10.5px] tnum text-ink-2">{todayRows.length}</span>
                       </div>
                     )}
-                    {todayRows.map(render)}
+                    {todayRows.map(x => render(x, todayRows))}
                   </section>
                 )}
 
