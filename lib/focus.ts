@@ -143,7 +143,9 @@ export const QUADRANTS: {
   {
     key: 'schedule', title: 'Schedule', verb: 'Pick a day',
     axes: 'Important, not urgent',
-    blurb: 'Unclear deadline, but it builds something. Give it a day before the deadline gives it one.',
+    blurb: 'It matters and the clock is not close yet — a deadline weeks out, or none at all. '
+      + 'This is the box that keeps Do from overflowing: give these a day before the deadline '
+      + 'gives you one. Dated work leads, then Someday in the order you ranked it.',
     tone: '--theirs',
   },
   {
@@ -155,7 +157,9 @@ export const QUADRANTS: {
   {
     key: 'drop', title: 'Anytime', verb: 'When there is a gap',
     axes: 'Neither',
-    blurb: 'Nothing forcing it and nothing riding on it. Still worth doing — it just is never the next thing. Batch these into an hour rather than carrying them one by one.',
+    blurb: 'Nothing forcing it and nothing riding on it. Still worth doing — it just is never '
+      + 'the next thing. Grouped by project, because the only efficient way through a list like '
+      + 'this is a batch: ten minutes of one project beats ten minutes of ten projects.',
     tone: '--border-2',
   },
 ]

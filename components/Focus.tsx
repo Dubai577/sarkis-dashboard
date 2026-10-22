@@ -32,6 +32,8 @@ interface Row {
   child_count: number
   archived_at?: string | null
   category?: { name: string } | null
+  /** Your hand rank in the Someday bucket, when it has one. */
+  someday_order?: number | null
 }
 
 export function Focus() {
@@ -63,6 +65,9 @@ export function Focus() {
   useEffect(() => { load() }, [load])
 
   const byId = useMemo(() => new Map(rows.map(r => [r.id, r])), [rows])
+  /** The immediate parent's name: the class, the department. Declared here
+      because the lane ordering below reaches for it. */
+  const where = (r: Row) => (r.parent_id ? byId.get(r.parent_id)?.title ?? '' : '')
 
   /**
    * Coursework, read from the top of the branch rather than the row.
@@ -97,8 +102,28 @@ export function Focus() {
     const out: Record<Lane, Row[]> =
       { do: [], schedule: [], delegate: [], drop: [], pending: [] }
     for (const r of leaves) out[laneFor(r)].push(r)
-    const order = (a: Row, b: Row) =>
-      (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999') || a.title.localeCompare(b.title)
+    /**
+     * Deadlines first, then your ranking, then by project.
+     *
+     * Sorting on the due date alone left Anytime in no order at all: almost
+     * nothing in that box HAS a deadline, so every row tied at the fallback
+     * and the list came out alphabetical, which reads as random. Each key
+     * takes over where the one above it runs out:
+     *
+     *   a real deadline     soonest first — it outranks everything
+     *   your Someday rank   for the starred rows you ordered by hand
+     *   the project         so an undated list batches instead of scattering
+     */
+    const order = (a: Row, b: Row) => {
+      if (!!a.due_date !== !!b.due_date) return a.due_date ? -1 : 1
+      if (a.due_date && b.due_date && a.due_date !== b.due_date) {
+        return a.due_date.localeCompare(b.due_date)
+      }
+      const ra = a.someday_order ?? 1e9
+      const rb = b.someday_order ?? 1e9
+      if (ra !== rb) return ra - rb
+      return where(a).localeCompare(where(b)) || a.title.localeCompare(b.title)
+    }
     for (const k of Object.keys(out) as Lane[]) out[k].sort(order)
     return out
   }, [leaves, laneFor])
@@ -128,7 +153,6 @@ export function Focus() {
     }
   }
 
-  const where = (r: Row) => (r.parent_id ? byId.get(r.parent_id)?.title ?? '' : '')
 
   /** Tomorrow, then the next weekdays by name — the Schedule verb. */
   const quickDays = useMemo(() => {
