@@ -31,6 +31,7 @@ interface Row {
   is_group_view?: boolean
   child_count: number
   archived_at?: string | null
+  category?: { name: string } | null
 }
 
 export function Focus() {
@@ -63,6 +64,28 @@ export function Focus() {
 
   const byId = useMemo(() => new Map(rows.map(r => [r.id, r])), [rows])
 
+  /**
+   * Coursework, read from the top of the branch rather than the row.
+   *
+   * An assignment carries no category of its own — the school project does —
+   * so the only honest way to ask "is this coursework" is to walk up to the
+   * root. 160 assignments were sitting in Clear it and Anytime because this
+   * was never asked.
+   */
+  const isSchool = useCallback((r: Row) => {
+    let cur: Row | undefined = r
+    const guard = new Set<string>()
+    while (cur?.parent_id && !guard.has(cur.id)) {
+      guard.add(cur.id)
+      cur = byId.get(cur.parent_id)
+    }
+    return cur?.category?.name === 'School' || cur?.title.trim().toUpperCase() === 'VT'
+  }, [byId])
+  const laneFor = useCallback(
+    (r: Row) => laneOf({ ...r, school: isSchool(r) }, now),
+    [isSchool, now],
+  )
+
   /** Only leaves: a project is not a task, and counting it twice is noise. */
   const leaves = useMemo(() => {
     const holds = new Set(rows.map(r => r.parent_id).filter(Boolean) as string[])
@@ -73,12 +96,12 @@ export function Focus() {
   const buckets = useMemo(() => {
     const out: Record<Lane, Row[]> =
       { do: [], schedule: [], delegate: [], drop: [], pending: [] }
-    for (const r of leaves) out[laneOf(r, now)].push(r)
+    for (const r of leaves) out[laneFor(r)].push(r)
     const order = (a: Row, b: Row) =>
       (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999') || a.title.localeCompare(b.title)
     for (const k of Object.keys(out) as Lane[]) out[k].sort(order)
     return out
-  }, [leaves, now])
+  }, [leaves, laneFor])
 
   async function patch(id: string, body: Record<string, unknown>) {
     setBusy(id)
@@ -167,6 +190,8 @@ export function Focus() {
                 <p className="mt-1 text-[11.5px] leading-snug text-ink-2">
                   A deadline close enough to bite: late, or due within {URGENT_WITHIN} days.
                   Read from the due date, so it is never out of date and you never set it.
+                  For coursework the planned day counts too — that day was worked out from
+                  the deadline, so reaching it means today is the day.
                 </p>
                 <p className="mt-1.5 rounded-md bg-surface px-2 py-1.5 text-[11px] leading-snug text-ink-2">
                   <span className="font-medium">The test:</span> if I do not do this by then,
@@ -187,6 +212,11 @@ export function Focus() {
                 <p className="mt-1.5 rounded-md bg-surface px-2 py-1.5 text-[11px] leading-snug text-ink-2">
                   <span className="font-medium">The test:</span> if this never got done, what
                   would I have lost? If the honest answer is nothing, leave the star off.
+                </p>
+                <p className="mt-1.5 text-[11px] leading-snug text-ink-3">
+                  Coursework is starred for you. A degree is not something you re-decide to
+                  care about each week, and an assignment due tonight does not belong in the
+                  same box as a favour.
                 </p>
               </div>
             </div>
@@ -293,6 +323,13 @@ export function Focus() {
       <div className="mb-1 flex items-baseline gap-2">
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-ink-2">{meta.title}</h2>
         <span className="text-[10px] tnum text-ink-3">{list.length}</span>
+        {/* How much of this box is the semester, so a long list is readable as
+            "a syllabus" rather than "I am failing at everything". */}
+        {list.filter(isSchool).length > 0 && (
+          <span className="text-[10px] tnum text-ink-3">
+            · {list.filter(isSchool).length} coursework
+          </span>
+        )}
       </div>
 
       {/* the legend lives below the lists, see the note at the bottom */}
@@ -314,16 +351,27 @@ export function Focus() {
             <div key={r.id} className="flex flex-col border-b border-line/50 px-2 py-1.5 last:border-b-0">
               <div className="flex items-start gap-1.5">
                 {/* Importance: the one axis a person has to set. */}
-                <button
-                  onClick={() => patch(r.id, { important: !r.important })}
-                  disabled={busy === r.id}
-                  title={r.important ? 'Marked important' : 'Mark important'}
-                  className={`mt-[1px] shrink-0 text-[13px] leading-none ${
-                    r.important ? 'text-mine' : 'text-ink-3 opacity-50 hover:opacity-100'
-                  }`}
-                >
-                  {r.important ? '★' : '☆'}
-                </button>
+                {isSchool(r) ? (
+                  /* Already answered: an empty star beside an assignment due
+                     tonight would read as "this does not matter". */
+                  <span
+                    title="Coursework — important by default"
+                    className="mt-[1px] shrink-0 text-[13px] leading-none text-mine/70"
+                  >
+                    ★
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => patch(r.id, { important: !r.important })}
+                    disabled={busy === r.id}
+                    title={r.important ? 'Marked important' : 'Mark important'}
+                    className={`mt-[1px] shrink-0 text-[13px] leading-none ${
+                      r.important ? 'text-mine' : 'text-ink-3 opacity-50 hover:opacity-100'
+                    }`}
+                  >
+                    {r.important ? '★' : '☆'}
+                  </button>
+                )}
 
                 <span className="min-w-0 flex-1 break-words text-[12.5px] leading-snug">{r.title}</span>
 

@@ -44,6 +44,17 @@ export interface FocusInput {
   progress?: string | null
   /** Set when the work sits with someone else. */
   waiting_on?: string | null
+  /**
+   * Coursework: it lives under the school project.
+   *
+   * Two things follow, and both were wrong before. It is important without
+   * being starred — a degree is not a thing you re-decide to care about each
+   * week, and leaving it unstarred put an assignment due tonight in the same
+   * box as a favour. And its planned day counts as urgency, because that day
+   * was computed FROM the deadline by the planning rules, so arriving at it
+   * means the deadline is close enough that today is the day.
+   */
+  school?: boolean
 }
 
 const daysUntil = (date: string, today: string) =>
@@ -58,13 +69,31 @@ const daysUntil = (date: string, today: string) =>
  * meaning anything.
  */
 export function isUrgent(item: FocusInput, today: string): boolean {
+  /**
+   * Coursework carries a second clock: the day the planner set for it.
+   *
+   * For anything else a planned date is a preference and must not create
+   * urgency — otherwise scheduling a task makes it urgent, which would empty
+   * Schedule into Do and leave the quadrants meaning nothing. Coursework is
+   * the exception because its planned day is derived from its deadline, so
+   * reaching that day is deadline information, not a mood.
+   */
+  if (item.school && item.planned_date && item.planned_date <= today) return true
   if (!item.due_date) return false
   return daysUntil(item.due_date, today) <= URGENT_WITHIN
 }
 
+/**
+ * Importance, which is a judgment — with one standing answer.
+ *
+ * Coursework is important by default. Everything else waits for the star.
+ */
+export const isImportant = (item: FocusInput) =>
+  item.important === true || item.school === true
+
 /** Which of the four corners a task you still hold belongs in. */
 export function quadrantOf(item: FocusInput, today: string): Quadrant {
-  const important = item.important === true
+  const important = isImportant(item)
   const urgent = isUrgent(item, today)
   if (important && urgent) return 'do'
   if (important) return 'schedule'
