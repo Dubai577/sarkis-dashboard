@@ -1275,7 +1275,9 @@ function DashboardView() {
                                today={data.date} onChanged={load} />
                   )}
                 </div>
-                <span className="mt-[5px] flex shrink-0">
+                {/* Stacked on a phone, where 18px of width is worth more
+                    than 12px of height; side by side where there is room. */}
+                <span className="mt-[3px] flex shrink-0 flex-col sm:mt-[5px] sm:flex-row">
                   <button
                     onClick={() => moveDayRow(within, r.key, -1)}
                     disabled={within[0]?.key === r.key}
@@ -2255,20 +2257,41 @@ function AddToDay({
     )
   }
 
+  const save = () => {
+    if (!text.trim()) return
+    onAdd(date, text)
+    setText('')
+    setOpen(false)
+  }
+
+  /*
+    Enter still works, and so does a button you can tap. A phone keyboard's
+    return key does not reliably deliver a readable keydown, so Enter-only was
+    Enter-never on the device this gets used on most.
+  */
   return (
-    <input
-      autoFocus
-      value={text}
-      onChange={e => setText(e.target.value)}
-      onKeyDown={e => {
-        if (e.key === 'Enter' && text.trim()) { onAdd(date, text); setText(''); setOpen(false) }
-        if (e.key === 'Escape') { setText(''); setOpen(false) }
-      }}
-      onBlur={() => { if (!text.trim()) setOpen(false) }}
-      placeholder="Add a task, Enter to save"
-      className="mb-1 w-full rounded-sm border border-line bg-surface-2 px-1.5 py-[3px] text-[11.5px]
-                 outline-none placeholder:text-ink-3 focus:border-mine"
-    />
+    <div className="mb-1 flex gap-1">
+      <input
+        autoFocus
+        value={text}
+        onChange={e => setText(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') save()
+          if (e.key === 'Escape') { setText(''); setOpen(false) }
+        }}
+        placeholder="Add a task"
+        className="min-w-0 flex-1 rounded-sm border border-line bg-surface-2 px-1.5 py-[3px] text-[11.5px]
+                   outline-none placeholder:text-ink-3 focus:border-mine"
+      />
+      <button
+        onClick={save}
+        disabled={!text.trim()}
+        className="shrink-0 rounded-sm border border-mine bg-mine-soft px-2 text-[11px] text-mine
+                   disabled:opacity-40"
+      >
+        Add
+      </button>
+    </div>
   )
 }
 
@@ -2474,15 +2497,18 @@ function TodoLine({
       </button>
 
       {parent && (
-        <span className="mt-[3px] max-w-[40%] shrink text-right text-[10px] leading-tight text-ink-3">
+        <span className="mt-[3px] max-w-[30%] shrink text-right text-[9.5px] leading-tight
+                         text-ink-3 sm:max-w-[40%] sm:text-[10px]">
           {parent.title}
         </span>
       )}
 
-      <span className="shrink-0 text-[10px] tnum text-ink-3">
-        {showDay ? DAY_NAMES[dayIndex(todo.task_date)].slice(0, 3) : ''}
-        {todo.start_time ? ` ${todo.start_time.slice(0, 5)}` : ''}
-      </span>
+      {(showDay || todo.start_time) && (
+        <span className="shrink-0 text-[10px] tnum text-ink-3">
+          {showDay ? DAY_NAMES[dayIndex(todo.task_date)].slice(0, 3) : ''}
+          {todo.start_time ? ` ${todo.start_time.slice(0, 5)}` : ''}
+        </span>
+      )}
     </div>
   )
 }

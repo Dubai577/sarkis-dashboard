@@ -211,6 +211,19 @@ body {
 /* Numerals line up in columns wherever they are compared. */
 .tnum { font-variant-numeric: tabular-nums; }
 
+/* iOS zooms the whole page when a text field under 16px takes focus, and it
+   does not zoom back out. Every field here is 11-12px by design, so tapping
+   one left the page magnified and clipped — which is most of what "tight on
+   mobile" turns out to be. Typing fields get 16px on phones; the inline date
+   and select controls keep their size, since they open a picker rather than a
+   keyboard. */
+@media (max-width: 640px) {
+  input:where([type='text'], [type='search'], [type='email'], [type='password'], :not([type])),
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* One-line clamp for titles. Median title is 15 characters; the longest is
    473, and a row must survive both without changing height. */
 .clamp-1 {

@@ -114,6 +114,46 @@ export function ItemActions({
       }
     : item
 
+  /**
+   * Hand the work to a name, creating the person if they are new.
+   *
+   * An existing name selects that person rather than failing: people.name
+   * carries a unique index, so the insert comes back 400, and a name you have
+   * used before is the likeliest thing to type here. A real failure says so —
+   * the old version acted only on success and swallowed everything else.
+   */
+  async function commitPerson(raw: string) {
+    const name = raw.trim()
+    if (!name || busy) return
+    const known = people.find(p => p.name.toLowerCase() === name.toLowerCase())
+    if (known) {
+      setNewPerson('')
+      await patch({ waiting_on: known.id, waiting_since: todayIso() })
+      return
+    }
+    setError('')
+    setBusy(true)
+    let created: string | null = null
+    try {
+      const res = await fetch('/api/people', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (body?.person?.id) created = body.person.id
+      else setError(body?.error || `Could not add ${name}.`)
+    } catch {
+      setError(`Could not add ${name}.`)
+    } finally {
+      setBusy(false)
+    }
+    if (created) {
+      setNewPerson('')
+      await patch({ waiting_on: created, waiting_since: todayIso() })
+    }
+  }
+
   async function patch(body: Record<string, unknown>, close = false) {
     setBusy(true)
     setError('')
@@ -254,46 +294,31 @@ export function ItemActions({
             <option value="">No one — it is on me</option>
             {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
+          {/*
+            A button, not just Enter.
+
+            A phone keyboard's return key does not reliably deliver a keydown
+            an app can read — predictive keyboards send keyCode 229 with no
+            key — so an input whose only way to commit is Enter simply does
+            nothing on a phone, silently. Every field that saves on Enter needs
+            something you can tap instead.
+          */}
           <div className="mt-1.5 flex gap-1.5">
             <input
               value={newPerson}
               onChange={e => setNewPerson(e.target.value)}
-              /**
-               * Typing a name that already exists used to do nothing at all.
-               *
-               * people.name carries a unique index, so the insert came back
-               * 400 and the old code only acted on success — no handover, no
-               * error, nothing. A name you have used before is the LIKELIEST
-               * thing to type here, so that silence was the common case. Now
-               * an existing name simply selects that person, and a real
-               * failure says so instead of swallowing itself.
-               */
-              onKeyDown={async e => {
-                if (e.key !== 'Enter' || !newPerson.trim()) return
-                const name = newPerson.trim()
-                const known = people.find(p => p.name.toLowerCase() === name.toLowerCase())
-                if (known) {
-                  setNewPerson('')
-                  patch({ waiting_on: known.id, waiting_since: todayIso() })
-                  return
-                }
-                setError('')
-                const res = await fetch('/api/people', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ name }),
-                })
-                const body = await res.json().catch(() => ({}))
-                if (body?.person?.id) {
-                  setNewPerson('')
-                  patch({ waiting_on: body.person.id, waiting_since: todayIso() })
-                } else {
-                  setError(body?.error || `Could not add ${name}.`)
-                }
-              }}
-              placeholder="or add someone new, Enter to save"
+              onKeyDown={e => { if (e.key === 'Enter') commitPerson(newPerson) }}
+              placeholder="or type a name"
               className={`${inputClass} text-[12px]`}
             />
+            <button
+              disabled={busy || !newPerson.trim()}
+              onClick={() => commitPerson(newPerson)}
+              className="shrink-0 rounded-md border border-mine bg-mine-soft px-3 text-[12px]
+                         font-medium text-mine disabled:opacity-40"
+            >
+              Hand over
+            </button>
           </div>
           <p className="mt-1 text-[10px] leading-snug text-ink-3">
             {live?.waiting_on
