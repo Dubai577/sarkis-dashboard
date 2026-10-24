@@ -2164,8 +2164,18 @@ function DatedItem({
     ? node.followUp.title
     : node.title
 
+  /**
+   * The meta wraps; the title does not get squeezed.
+   *
+   * Everything after the title is shrink-0 — chips, the class, the pencil,
+   * the arrows — so in a half-width column they took what they needed and
+   * left the title a few pixels, which wrapped it one character per line. A
+   * floor on the title plus a wrapping row means the trailing things drop to
+   * a second line instead of eating the first one.
+   */
   return (
-    <div className="flex items-start gap-1.5 border-b border-line/60 py-1 last:border-b-0">
+    <div className="flex flex-wrap items-start gap-x-1.5 gap-y-0.5 border-b border-line/60
+                    py-1 last:border-b-0">
       {kind !== 'followup' && onChanged && (
         <span className="mt-[1px]">
           <Check
@@ -2189,7 +2199,7 @@ function DatedItem({
           planned_date: node.planned_date, due_date: node.due_date,
           status: node.status, progress: node.progress ?? null,
         })}
-        className={`min-w-0 flex-1 break-words text-left text-[12.5px] leading-snug ${
+        className={`min-w-[9rem] flex-1 break-words text-left text-[12.5px] leading-snug ${
           isDone ? 'text-ink-3 line-through' : ''
         }`}
       >
@@ -2445,10 +2455,20 @@ function TodoLine({
     )
   }
 
+  /**
+   * The meta wraps; the title does not get squeezed.
+   *
+   * Everything after the title is shrink-0 — chips, the class, the pencil,
+   * the arrows — so in a half-width column they took what they needed and
+   * left the title a few pixels, which wrapped it one character per line. A
+   * floor on the title plus a wrapping row means the trailing things drop to
+   * a second line instead of eating the first one.
+   */
   return (
-    <div className="flex items-start gap-1.5 border-b border-line/60 py-1 last:border-b-0">
+    <div className="flex flex-wrap items-start gap-x-1.5 gap-y-0.5 border-b border-line/60
+                    py-1 last:border-b-0">
       <Check checked={todo.is_complete} onChange={onToggle} label={`Complete ${todo.title}`} />
-      <span className={`min-w-0 flex-1 break-words text-[12.5px] leading-snug ${
+      <span className={`min-w-[9rem] flex-1 break-words text-[12.5px] leading-snug ${
         todo.is_complete ? 'text-ink-3 line-through' : ''
       }`}>
         {todo.title}
@@ -2497,8 +2517,10 @@ function TodoLine({
       </button>
 
       {parent && (
-        <span className="mt-[3px] max-w-[30%] shrink text-right text-[9.5px] leading-tight
-                         text-ink-3 sm:max-w-[40%] sm:text-[10px]">
+        // Two lines at most: "Omena Demiana & Website/Side Projects" is a
+        // legitimate name and it was making a one-line task three rows tall.
+        <span className="clamp-2 mt-[3px] max-w-[30%] shrink text-right text-[9.5px] leading-tight
+                         text-ink-3 sm:max-w-[36%] sm:text-[10px]" title={parent.title}>
           {parent.title}
         </span>
       )}
