@@ -155,16 +155,29 @@ export function ItemActions({
   }
 
   async function patch(body: Record<string, unknown>, close = false) {
+    /**
+     * A name left in the box is an edit you meant.
+     *
+     * Renaming committed only through its own button, so typing a new name and
+     * then reaching for any other control — Done, a date, a project — wrote
+     * that change and silently dropped the rename. Every write now carries the
+     * pending name with it, which also means the sheet cannot be closed with
+     * an edit stranded in it.
+     */
+    const typed = title.trim()
+    const payload = !('title' in body) && typed && typed !== current.title
+      ? { ...body, title: typed }
+      : body
     setBusy(true)
     setError('')
     try {
       const res = await fetch(`/api/items/${item!.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'That did not save.')
-      if (typeof body.title === 'string') setTitle(body.title)
+      if (typeof payload.title === 'string') setTitle(payload.title as string)
       onDone()
       if (close) onClose()
     } catch (e) {
