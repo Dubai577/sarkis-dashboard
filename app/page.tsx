@@ -2468,10 +2468,18 @@ function TodoLine({
     <div className="flex flex-wrap items-start gap-x-1.5 gap-y-0.5 border-b border-line/60
                     py-1 last:border-b-0">
       <Check checked={todo.is_complete} onChange={onToggle} label={`Complete ${todo.title}`} />
+      {/*
+        The item's name wins over the mirror's copy of it.
+
+        A mirror is made once and keeps the words it was made with, so a
+        renamed task went on showing its old name here until something moved
+        it. Sync repairs the copy now, but the display should not depend on a
+        repair having run: the item is the source of truth, so read it.
+      */}
       <span className={`min-w-[9rem] flex-1 break-words text-[12.5px] leading-snug ${
         todo.is_complete ? 'text-ink-3 line-through' : ''
       }`}>
-        {todo.title}
+        {source?.title ?? todo.title}
       </span>
 
       {slipped > 0 && !todo.is_complete && (

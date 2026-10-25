@@ -54,7 +54,7 @@ export async function runSync(now: IsoDate = todayIso()): Promise<SyncResult> {
     // Completed rows count too. Completing a synced todo no longer archives its
     // source, so matching only open rows would re-materialize everything the
     // moment it was ticked off.
-    db.from('todos').select('id,source_item_id,source_sweat_id,origin_date,is_complete,placement'),
+    db.from('todos').select('id,title,source_item_id,source_sweat_id,origin_date,is_complete,placement'),
   ])
 
   /**
@@ -87,6 +87,24 @@ export async function runSync(now: IsoDate = todayIso()): Promise<SyncResult> {
       .from('todos')
       .update({ task_date: landOn(origin), origin_date: origin, roll_count: 0, title: item.title })
       .eq('id', open.id)
+    if (error) throw error
+    result.moved += 1
+  }
+
+  /**
+   * A rename on the item has to reach its mirror.
+   *
+   * The title was only ever copied when a mirror MOVED, so renaming something
+   * already on a day changed the item and left the day showing the old words.
+   * It read as a rename that would not save — and the more times you tried,
+   * the more certain that looked. Unlike the move above this ignores
+   * placement: a todo you dragged to a day by hand is still the same task,
+   * and its name is not part of what you decided by dragging it.
+   */
+  for (const item of items ?? []) {
+    const open = openBySource.get(item.id)
+    if (!open || open.title === item.title) continue
+    const { error } = await db.from('todos').update({ title: item.title }).eq('id', open.id)
     if (error) throw error
     result.moved += 1
   }
