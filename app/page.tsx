@@ -8,6 +8,7 @@ import { Check, ErrorBanner, Spinner } from '@/components/ui/primitives'
 import { AddChild, WaitingOnSheet } from '@/components/InlineActions'
 import { Drill, type TreeNode } from '@/components/Drill'
 import { ItemActions, ActionChip, type ActionTarget } from '@/components/ItemActions'
+import { Rank } from '@/components/ui/Rank'
 import {
   ChevronDownIcon, ChevronUpIcon, ExternalIcon, PencilIcon,
 } from '@/components/ui/Icon'
@@ -254,11 +255,11 @@ function DashboardView() {
    * front and leave eleven tied. After the first move each one is a clean swap
    * and only two rows are written.
    */
-  const reorderSomeday = useCallback(async (list: TreeNode[], id: string, delta: number) => {
+  const reorderSomeday = useCallback(async (list: TreeNode[], id: string, position: number) => {
     const order = [...list]
     const from = order.findIndex(n => n.id === id)
-    const to = from + delta
-    if (from < 0 || to < 0 || to >= order.length) return
+    const to = Math.min(Math.max(position - 1, 0), order.length - 1)
+    if (from < 0 || from === to) return
     const [moved] = order.splice(from, 1)
     order.splice(to, 0, moved)
     await Promise.all(order.map((n, i) =>
@@ -284,12 +285,13 @@ function DashboardView() {
   const moveDayRow = useCallback(async (
     rows: { rowId: string; kind: 'todo' | 'item'; key: string; order: number | null }[],
     key: string,
-    delta: number,
+    /** 1-based position in the list as shown. */
+    position: number,
   ) => {
     const order = [...rows]
     const from = order.findIndex(r => r.key === key)
-    const to = from + delta
-    if (from < 0 || to < 0 || to >= order.length) return
+    const to = Math.min(Math.max(position - 1, 0), order.length - 1)
+    if (from < 0 || from === to) return
     const [moved] = order.splice(from, 1)
     order.splice(to, 0, moved)
     await Promise.all(order.map((r, i) =>
@@ -1275,27 +1277,13 @@ function DashboardView() {
                                today={data.date} onChanged={load} />
                   )}
                 </div>
-                {/* Stacked on a phone, where 18px of width is worth more
-                    than 12px of height; side by side where there is room. */}
-                <span className="mt-[3px] flex shrink-0 flex-col sm:mt-[5px] sm:flex-row">
-                  <button
-                    onClick={() => moveDayRow(within, r.key, -1)}
-                    disabled={within[0]?.key === r.key}
-                    aria-label={`Move ${r.name} up`}
-                    title="Move up"
-                    className="rounded p-0.5 text-ink-3 opacity-50 hover:text-mine hover:opacity-100 disabled:opacity-20"
-                  >
-                    <ChevronUpIcon size={10} />
-                  </button>
-                  <button
-                    onClick={() => moveDayRow(within, r.key, 1)}
-                    disabled={within[within.length - 1]?.key === r.key}
-                    aria-label={`Move ${r.name} down`}
-                    title="Move down"
-                    className="rounded p-0.5 text-ink-3 opacity-50 hover:text-mine hover:opacity-100 disabled:opacity-20"
-                  >
-                    <ChevronDownIcon size={10} />
-                  </button>
+                <span className="mt-[3px] flex shrink-0">
+                  <Rank
+                    position={within.findIndex(x => x.key === r.key) + 1}
+                    total={within.length}
+                    label={`Position of ${r.name}`}
+                    onSet={n => moveDayRow(within, r.key, n)}
+                  />
                 </span>
               </div>
             )
@@ -1497,24 +1485,12 @@ function DashboardView() {
                   {/* Rank by hand: in a list where everything matters, the
                       order is the only thing left that can say which first. */}
                   <span className="mt-[1px] flex shrink-0">
-                    <button
-                      onClick={() => reorderSomeday(someday.map(s => s.node), node.id, -1)}
-                      disabled={i === 0}
-                      aria-label={`Move ${node.title} up`}
-                      title="Higher"
-                      className="rounded-md p-1 text-ink-3 hover:bg-band-nest hover:text-mine disabled:opacity-25"
-                    >
-                      <ChevronUpIcon size={11} />
-                    </button>
-                    <button
-                      onClick={() => reorderSomeday(someday.map(s => s.node), node.id, 1)}
-                      disabled={i === someday.length - 1}
-                      aria-label={`Move ${node.title} down`}
-                      title="Lower"
-                      className="rounded-md p-1 text-ink-3 hover:bg-band-nest hover:text-mine disabled:opacity-25"
-                    >
-                      <ChevronDownIcon size={11} />
-                    </button>
+                    <Rank
+                      position={i + 1}
+                      total={someday.length}
+                      label={`Position of ${node.title}`}
+                      onSet={n => reorderSomeday(someday.map(s => s.node), node.id, n)}
+                    />
                   </span>
                 </div>
               )

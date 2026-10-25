@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDownIcon, ChevronUpIcon, PencilIcon } from '@/components/ui/Icon'
+import { PencilIcon } from '@/components/ui/Icon'
+import { Rank } from '@/components/ui/Rank'
 import { ItemActions, type ActionTarget } from '@/components/ItemActions'
 import type { TreeNode } from '@/components/Drill'
 import { mediumLabel, today as todayIso } from '@/lib/dates'
@@ -221,11 +222,11 @@ export function Focus() {
    * two places. Writing only the moved row would leave the rest tied at
    * whatever they were, which is how hand ordering rots.
    */
-  const rankFree = useCallback(async (list: Row[], id: string, delta: number) => {
+  const rankFree = useCallback(async (list: Row[], id: string, position: number) => {
     const order = [...list]
     const from = order.findIndex(r => r.id === id)
-    const to = from + delta
-    if (from < 0 || to < 0 || to >= order.length) return
+    const to = Math.min(Math.max(position - 1, 0), order.length - 1)
+    if (from < 0 || from === to) return
     const [moved] = order.splice(from, 1)
     order.splice(to, 0, moved)
     setBusy(id)
@@ -633,24 +634,13 @@ export function Focus() {
                     have no dates, so nothing else can say which comes first. */}
                 {tab === 'free' && (
                   <span className="flex shrink-0">
-                    <button
-                      onClick={() => rankFree(list, r.id, -1)}
-                      disabled={busy === r.id || list[0]?.id === r.id}
-                      aria-label={`Move ${r.title} up`}
-                      title="Higher"
-                      className="rounded-md p-0.5 text-ink-3 hover:text-mine disabled:opacity-25"
-                    >
-                      <ChevronUpIcon size={11} />
-                    </button>
-                    <button
-                      onClick={() => rankFree(list, r.id, 1)}
-                      disabled={busy === r.id || list[list.length - 1]?.id === r.id}
-                      aria-label={`Move ${r.title} down`}
-                      title="Lower"
-                      className="rounded-md p-0.5 text-ink-3 hover:text-mine disabled:opacity-25"
-                    >
-                      <ChevronDownIcon size={11} />
-                    </button>
+                    <Rank
+                      position={list.findIndex(x => x.id === r.id) + 1}
+                      total={list.length}
+                      disabled={busy === r.id}
+                      label={`Position of ${r.title}`}
+                      onSet={n => rankFree(list, r.id, n)}
+                    />
                   </span>
                 )}
               </div>
