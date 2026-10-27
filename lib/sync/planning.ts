@@ -40,7 +40,7 @@ export type PlanRule =
  * not enough on its own — anything newly posted would arrive as a fresh,
  * unarchived task — so the sync skips these outright.
  */
-export const IGNORED_COURSES = new Set<string>(['MSE 2034'])
+export const IGNORED_COURSES = new Set<string>(['MSE 2034', 'EGR 240'])
 
 export const RULES: Record<string, PlanRule> = {
   // All three are due every Friday, so "the Wednesday before" is both the
@@ -52,6 +52,8 @@ export const RULES: Record<string, PlanRule> = {
   'ISE 3434': { kind: 'offset', days: 1 },
   // Three days back puts a Sunday deadline on Thursday on its own, which is
   // what was asked for; the weekend guard never has to fire for that case.
+  // Kept although the class is ignored above: the rule is what the feed
+  // would be planned by if it is ever taken off that list.
   'EGR 240': { kind: 'offset', days: 3 },
 }
 
