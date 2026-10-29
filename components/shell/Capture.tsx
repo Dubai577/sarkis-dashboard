@@ -62,6 +62,7 @@ export function Capture({
   // department made as a plain task cannot be opened or filled afterwards.
   const [childrenAreGroups, setChildrenAreGroups] = useState(true)
   const [personId, setPersonId] = useState('')
+  const [newPerson, setNewPerson] = useState('')
   const [splitInto, setSplitInto] = useState<string[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -139,6 +140,48 @@ export function Capture({
       ?? null,
     [rows],
   )
+
+  /**
+   * Hand it to someone who is not on the list yet.
+   *
+   * The dropdown offered the people already known and no way to name anyone
+   * else, so capturing "ask Marco to bring the vestments" meant saving it,
+   * opening it, adding the person there, and assigning it — four steps to
+   * record one sentence. An existing name selects that person rather than
+   * failing, since people.name is unique and a name you have used before is
+   * the likeliest thing to type.
+   */
+  async function addPerson() {
+    const name = newPerson.trim()
+    if (!name || busy) return
+    const known = people.find(p => (p.name ?? '').toLowerCase() === name.toLowerCase())
+    if (known) {
+      setPersonId(known.id)
+      setNewPerson('')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const res = await fetch('/api/people', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (body?.person?.id) {
+        setPeople(prev => [...prev, body.person])
+        setPersonId(body.person.id)
+        setNewPerson('')
+      } else {
+        setError(body?.error || `Could not add ${name}.`)
+      }
+    } catch {
+      setError(`Could not add ${name}.`)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   // Newlines or commas — however the list came out of your head.
   const children = useMemo(
@@ -324,6 +367,26 @@ export function Capture({
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
+              {/* A button as well as Enter: a phone keyboard's return key does
+                  not reliably deliver a keydown an app can read. */}
+              <div className="mt-1.5 flex gap-1.5">
+                <input
+                  value={newPerson}
+                  onChange={e => setNewPerson(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPerson() } }}
+                  placeholder="or someone not on the list"
+                  className={`${inputClass} text-[12px]`}
+                />
+                <button
+                  type="button"
+                  disabled={busy || !newPerson.trim()}
+                  onClick={addPerson}
+                  className="shrink-0 rounded-md border border-mine bg-mine-soft px-3 text-[12px]
+                             font-medium text-mine disabled:opacity-40"
+                >
+                  Add
+                </button>
+              </div>
             </Field>
           </div>
         )}
