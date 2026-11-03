@@ -30,7 +30,7 @@ type Kind = 'project' | 'task' | 'todo' | 'someday' | 'note'
 const KINDS: ReadonlyArray<readonly [Kind, string, string]> = [
   ['project', 'Project', 'Top level and pinned. Give it departments or tasks below.'],
   ['task', 'Task', 'Lives under a project or a department.'],
-  ['todo', 'A day', 'Goes straight onto a date.'],
+  ['todo', 'A day', 'Goes straight onto a date. Filed in Misc. until you move it.'],
   /**
    * The fifth answer to "when": not now, and that is a decision.
    *
@@ -207,8 +207,18 @@ export function Capture({
       const body: Record<string, unknown> = { text: value }
 
       if (kind === 'todo') {
-        body.target = 'todo'
-        body.task_date = date
+        /**
+         * A day still means a day — but as a real task, not a loose todo.
+         *
+         * A loose todo is a title and a date with nothing in the tree behind
+         * it, so it can never hold a project, a deadline, a star or a person,
+         * and a day view has nothing to open for it. It lands in Misc. for
+         * the same reason the quick box on Today does: which project is the
+         * question this kind exists to skip, and it takes one tap later.
+         */
+        body.target = 'item'
+        body.planned_date = date
+        if (oneOffs) body.parent_id = oneOffs.id
       } else if (kind === 'note') {
         body.target = 'note'
       } else {

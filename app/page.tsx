@@ -2292,52 +2292,39 @@ function TodoLine({
   onChanged?: () => void
 }) {
   /**
-   * A plain todo has no item behind it, so the item editor has nothing to
-   * open. It gets its own three fields in place: the name, the day, and
-   * delete. That is everything a plain dated task is.
+   * One editor, not two.
+   *
+   * A row with no item behind it used to get a cut-down inline form - rename,
+   * re-date, delete - and that was the whole of what you could do to it from a
+   * day. It is gone: the pencil promotes the row and opens the real sheet, so
+   * every row on a day offers the same thing.
    */
-  const [editing, setEditing] = useState(false)
-  const [draftTitle, setDraftTitle] = useState(todo.title)
-  const [draftDate, setDraftDate] = useState(todo.task_date)
   const [busy, setBusy] = useState(false)
 
-  async function savePlain() {
-    const title = draftTitle.trim()
-    if (!title) return
-    setBusy(true)
-    try {
-      await fetch(`/api/todos/${todo.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, task_date: draftDate }),
-      })
-      setEditing(false)
-      onChanged?.()
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function deletePlain() {
-    setBusy(true)
-    try {
-      await fetch(`/api/todos/${todo.id}`, { method: 'DELETE' })
-      setEditing(false)
-      onChanged?.()
-    } finally {
-      setBusy(false)
-    }
-  }
-
   /**
-   * Turn a loose todo into a real task, keeping its day.
+   * Open the one editor, promoting the row first if it has nothing behind it.
    *
-   * The item is created first and the todo deleted only once that succeeded,
-   * so a failure halfway leaves the row where it was rather than losing it.
-   * Sync then re-materialises the day from the new item, which is what makes
-   * the sheet open on it afterwards.
+   * A loose todo is a title and a date with no row in the tree, so there was
+   * nothing for the item sheet to edit and it got a cut-down inline form
+   * instead: rename, re-date, delete. Everything else — a project, a
+   * deadline, pending, Someday — was unreachable from a day.
+   *
+   * So the pencil makes it a task on the way to opening. The item is created
+   * before the todo is deleted, so a failure halfway leaves the row where it
+   * was, and the sheet opens on the new item immediately rather than waiting
+   * for the reload — which is what made this look like the row vanished.
    */
-  async function promote() {
+  async function openSheet() {
+    if (!onEdit) return
+    if (source) {
+      onEdit({
+        id: source.id, title: source.title, parent_id: source.parent_id,
+        planned_date: source.planned_date, due_date: source.due_date,
+        status: source.status, progress: source.progress ?? null,
+        important: source.important === true,
+      })
+      return
+    }
     const oneOffs = tree.find(n => !n.parent_id && /^misc/i.test(n.title))
       ?? tree.find(n => !n.parent_id)
     setBusy(true)
@@ -2346,16 +2333,24 @@ function TodoLine({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: draftTitle.trim() || todo.title,
+          title: todo.title,
           parent_id: oneOffs?.id ?? null,
-          planned_date: draftDate,
+          planned_date: todo.task_date,
           planned_auto: false,
         }),
       })
       if (!res.ok) return
+      const made = (await res.json().catch(() => ({})))?.item
       await fetch(`/api/todos/${todo.id}`, { method: 'DELETE' })
-      setEditing(false)
       onChanged?.()
+      if (made) {
+        onEdit({
+          id: made.id, title: made.title, parent_id: made.parent_id,
+          planned_date: made.planned_date, due_date: made.due_date ?? null,
+          status: made.status ?? null, progress: made.progress ?? null,
+          important: made.important === true,
+        })
+      }
     } finally {
       setBusy(false)
     }
@@ -2381,55 +2376,6 @@ function TodoLine({
     ? Math.round(
         (Date.parse(`${source.due_date}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000)
     : null
-
-  if (editing && !source) {
-    return (
-      <div className="border-b border-line/60 py-1.5 last:border-b-0">
-        <input
-          autoFocus
-          value={draftTitle}
-          onChange={e => setDraftTitle(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') savePlain()
-            if (e.key === 'Escape') setEditing(false)
-          }}
-          className="mb-1 w-full rounded-sm border border-line bg-surface-2 px-1.5 py-[3px] text-[12.5px]
-                     outline-none focus:border-mine"
-        />
-        <div className="flex items-center gap-1.5">
-          <input
-            type="date"
-            value={draftDate}
-            onChange={e => setDraftDate(e.target.value)}
-            className="rounded-sm border border-line bg-surface-2 px-1.5 py-[3px] text-[11px] tnum outline-none focus:border-mine"
-          />
-          <button disabled={busy} onClick={savePlain}
-                  className="rounded-md bg-mine px-2 py-[3px] text-[11px] font-medium text-bg">
-            Save
-          </button>
-          <button disabled={busy} onClick={() => setEditing(false)}
-                  className="text-[11px] text-ink-3">
-            Cancel
-          </button>
-          {/*
-            The way out of a dead end.
-
-            Rows made before the quick box created real tasks are stuck with a
-            title and a date; this promotes one in place, keeping its day, so
-            it can then be given a project and a deadline like anything else.
-          */}
-          <button disabled={busy} onClick={promote}
-                  className="text-[11px] text-mine">
-            Make it a task
-          </button>
-          <button disabled={busy} onClick={deletePlain}
-                  className="ml-auto text-[11px] text-dropped">
-            Delete
-          </button>
-        </div>
-      </div>
-    )
-  }
 
   /**
    * The meta wraps; the title does not get squeezed.
@@ -2480,21 +2426,10 @@ function TodoLine({
         surface you look at most.
       */}
       <button
-        onClick={() => {
-          if (source && onEdit) {
-            onEdit({
-              id: source.id, title: source.title, parent_id: source.parent_id,
-              planned_date: source.planned_date, due_date: source.due_date,
-              status: source.status, progress: source.progress ?? null,
-            })
-          } else {
-            setDraftTitle(todo.title)
-            setDraftDate(todo.task_date)
-            setEditing(true)
-          }
-        }}
+        onClick={openSheet}
+        disabled={busy}
         aria-label={`Edit ${todo.title}`}
-        title={source ? 'Edit — dates, where it lives, progress' : 'Rename, move, or delete'}
+        title="Project, dates, pending, Someday, rename, archive"
         className="mt-[2px] shrink-0 rounded p-0.5 text-ink-3 opacity-60 hover:text-mine hover:opacity-100"
       >
         <PencilIcon size={11} />
