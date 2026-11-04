@@ -45,7 +45,7 @@ export async function runSync(now: IsoDate = todayIso()): Promise<SyncResult> {
 
   const [{ data: items }, { data: sweat }, { data: existing }] = await Promise.all([
     db.from('items')
-      .select('id,title,planned_date,category_id')
+      .select('id,title,planned_date,category_id,start_time,end_time')
       .not('planned_date', 'is', null)
       .is('archived_at', null),
     // sweat_tasks is retired: migration 012 moved coursework into items, so the
@@ -141,6 +141,11 @@ export async function runSync(now: IsoDate = todayIso()): Promise<SyncResult> {
       title: item.title,
       task_date: landed,
       origin_date: origin,
+      // A time is part of the commitment, not decoration: an item set for 6pm
+      // that mirrors onto its day without one reads as "sometime Thursday",
+      // and the day cannot order it against anything else that has a clock.
+      start_time: item.start_time ?? null,
+      end_time: item.end_time ?? null,
       // Materialized, not chosen by hand — rollover may move it.
       placement: 'auto',
       source_item_id: item.id,
