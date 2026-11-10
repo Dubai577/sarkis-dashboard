@@ -251,7 +251,6 @@ export async function GET() {
       todos: todayRes.data ?? [],
       overdueCount: overdueRes.data?.length ?? 0,
       overdueTodos: overdueRes.data ?? [],
-      droppedCount: items.filter(i => i.possession === 'dropped').length,
       week,
       // The week's actual rows, so the dashboard can list them rather than
       // showing a count and making you go somewhere else to read it.

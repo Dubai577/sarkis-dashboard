@@ -93,7 +93,6 @@ interface Payload {
   overdueCount: number
   /** Unfinished todos from previous weeks. Rollover does not cross a week. */
   overdueTodos: Todo[]
-  droppedCount: number
   projects: Project[]
   people: { id: string; name: string }[]
   notes: { id: string; content: string }[]
@@ -1554,14 +1553,19 @@ function DashboardView() {
       )}
 
 
-      {/* ── attention, one line rather than its own panel ── */}
-      {(data.droppedCount > 0 || data.overdueCount > 0 || data.routines.total > 0) && (
+      {/*
+        ── attention, one line rather than its own panel ──
+
+        No count of what has been passed on. Pending lists those rows by name
+        a little further down this same page, so the number was a second,
+        vaguer telling of something already in front of you - and the one
+        thing it added, that four of them had gone quiet, it could not act on:
+        the chip was not even clickable. The nudge window still does its work
+        where it shows a row rather than a tally: heat, the person's page, and
+        the morning mail.
+      */}
+      {(data.overdueCount > 0 || data.routines.total > 0) && (
         <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
-          {data.droppedCount > 0 && (
-            <span className="rounded-sm border border-dropped/40 bg-dropped-soft px-1.5 py-0.5 text-dropped">
-              {data.droppedCount} need a nudge
-            </span>
-          )}
           {overdueTodos.length + overdueItems.length > 0 && (
             <button
               onClick={() => {
