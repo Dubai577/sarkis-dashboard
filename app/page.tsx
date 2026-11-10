@@ -1211,9 +1211,18 @@ function DashboardView() {
             {pending.map(({ node, who, where, root }) => (
               <div key={node.id}
                    className="flex items-start gap-1.5 border-b border-line/60 py-1 last:border-b-0">
+                {/*
+                  The whole name.
+
+                  A first name was shown to keep the chip narrow, which works
+                  until the name IS the first word: "amo nabil" became "amo",
+                  "Fr. Botrous" became "Fr.". A person you are chasing has to
+                  be identifiable, and the row wraps now, so the chip can have
+                  the width it needs.
+                */}
                 <span className="mt-[3px] shrink-0 rounded-sm bg-theirs-soft px-1 text-[8.5px]
                                  uppercase tracking-wider text-theirs">
-                  {who.split(' ')[0]}
+                  {who}
                 </span>
                 <button
                   onClick={() => setActionTarget({
@@ -2522,7 +2531,7 @@ function Chip({
                 className={`mt-[3px] shrink-0 text-[9.5px] tnum ${
                   child.possession === 'dropped' ? 'text-dropped' : 'text-ink-3'
                 }`}>
-          {child.waiting.split(' ')[0]}{child.days !== null ? ` ${child.days}d` : ''}
+          {child.waiting}{child.days !== null ? ` ${child.days}d` : ''}
         </button>
       )}
 

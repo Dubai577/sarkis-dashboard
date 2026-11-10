@@ -264,7 +264,7 @@ export function Drill({
                       <span className={`shrink-0 text-[9.5px] ${
                         n.possession === 'dropped' ? 'text-dropped' : 'text-ink-3'
                       }`}>
-                        {n.waiting.split(' ')[0]}
+                        {n.waiting}
                       </span>
                     )}
 
